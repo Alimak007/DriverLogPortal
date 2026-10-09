@@ -1,0 +1,54 @@
+import { IPropertyPaneGroup, PropertyPaneSlider } from '@microsoft/sp-property-pane';
+import * as React from 'react';
+import * as ReactDom from 'react-dom';
+import {
+  FleetWebPartBase,
+  IFleetWebPartProps,
+} from '../../common/webpart/FleetWebPartBase';
+import MyBookings, { IMyBookingsProps } from './components/MyBookings';
+
+export interface IMyBookingsWebPartProps extends IFleetWebPartProps {
+  historyCount: number;
+  refreshSeconds: number;
+}
+
+export default class MyBookingsWebPart extends FleetWebPartBase<IMyBookingsWebPartProps> {
+  public render(): void {
+    const element: React.ReactElement<IMyBookingsProps> = React.createElement(MyBookings, {
+      services: this.services,
+      user: this.currentUser,
+      bootstrapError: this.bootstrapError,
+      historyCount: this.properties.historyCount ?? 50,
+      refreshMs: (this.properties.refreshSeconds ?? 30) * 1000,
+    });
+
+    ReactDom.render(element, this.domElement);
+  }
+
+  protected onDispose(): void {
+    ReactDom.unmountComponentAtNode(this.domElement);
+    super.onDispose();
+  }
+
+  protected settingsGroups(): IPropertyPaneGroup[] {
+    return [
+      {
+        groupName: 'History',
+        groupFields: [
+          PropertyPaneSlider('historyCount', {
+            label: 'Requests to show',
+            min: 10,
+            max: 100,
+            step: 10,
+          }),
+          PropertyPaneSlider('refreshSeconds', {
+            label: 'Refresh interval (seconds)',
+            min: 15,
+            max: 300,
+            step: 15,
+          }),
+        ],
+      },
+    ];
+  }
+}

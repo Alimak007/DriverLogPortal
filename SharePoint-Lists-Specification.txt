@@ -1,0 +1,878 @@
+================================================================================
+FLEET BOOKING AND DISPATCH PORTAL - SHAREPOINT LIST SPECIFICATION
+================================================================================
+Site            : https://pomae.sharepoint.com/sites/travel-dev  (development)
+Document owner  : Aliakbar
+Created         : 1 October 2026
+Last updated    : 1 October 2026
+Source          : "Fleet Booking and Dispatch Portal - Requirements", 1 Oct 2026
+
+PURPOSE
+This file is the single checklist of every SharePoint change the solution needs.
+It is maintained alongside the code: when a model in src/common/models changes,
+this file changes in the same commit.
+
+HOW TO READ IT
+  [NO CHANGE]  Touch nothing. Existing process depends on it.
+  [MODIFY]     Existing list, add or alter columns. Migration script required.
+  [CREATE]     New list, build from scratch.
+
+Internal names are given where they differ from the display name. Create the
+column with the internal name FIRST (no spaces), then rename the display name,
+otherwise SharePoint bakes a _x0020_ into the internal name forever.
+
+================================================================================
+SECTION 0 - SUMMARY AND COUNT
+================================================================================
+  Reused unchanged ............  2 lists   (PropertyMaster, DLClientMaster)
+  Refactored ..................  2 lists   (VehicleMaster, DriversMaster)
+  Left strictly alone .........  5 lists   (DriverLogs, LogEntries,
+                                            DrvierEntries, FleetData,
+                                            Daily Trip Sheet)
+  New .........................  9 lists   (Section 4)
+  New, supporting ............   2 lists   (Templates, ReportSnapshot)
+                                 --
+  TOTAL                          20 lists
+
+>>> DISCREPANCY TO RESOLVE WITH THE AUTHOR
+    The requirements say "Seventeen lists" and "eight new", but the New lists
+    table itself has NINE rows, and the body text additionally requires a
+    Templates list (Notifications section) and a ReportSnapshot list (Reports
+    section) that never appear in any table. The real total is 20.
+    Nothing is blocked by this - it is a count in the prose, not a design
+    decision - but the number in the requirements document should be corrected
+    so the provisioning script and the document agree.
+
+================================================================================
+SECTION 1 - LISTS LEFT STRICTLY ALONE  [NO CHANGE]
+================================================================================
+Do not add, rename, retype or reorder a single column in these. The monthly
+expense submission, the Plumsail form and the approval workflow run against them
+exactly as they do today.
+
+  1. DriverLogs
+  2. LogEntries
+  3. DrvierEntries      (sic - the transposition is live in workflows, leave it)
+  4. FleetData
+  5. Daily Trip Sheet
+
+TWO DELIBERATE, ADDITIVE EXCEPTIONS - no schema change, writes only:
+
+  Daily Trip Sheet
+      Schema untouched. Stops being filled in by hand; the Complete flow
+      writes a row on trip completion, carrying OpeningReading and
+      ClosingReading from TripAssignments.
+
+  FleetData."No Of TRFs"
+      Currently typed in by hand. Becomes a count of TransportRequests for
+      that employee + vehicle + month, written by a scheduled flow.
+      THIS IS THE ONLY COLUMN IN ANY EXISTING LIST THAT THE NEW SYSTEM WRITES.
+      No other FleetData column is read or written.
+
+================================================================================
+SECTION 2 - LISTS REUSED UNCHANGED  [NO CHANGE]
+================================================================================
+Read-only to the new solution. No columns added.
+
+  PropertyMaster
+      Role     : Property -> Client hierarchy with Approver and Supervisor.
+                 Drives property scoping and defines the dispatch zone.
+      Used by  : booking form (pickup default), scoping in the service layer,
+                 AllocationRules lookup, eligibility filter.
+      ACTION   : Confirm Title and the Approver/Supervisor columns are indexed.
+                 Verify the exact internal names before the service layer is
+                 written - they were not supplied in the requirements.
+
+  DLClientMaster
+      Role     : Driver-to-property allocation. The FIRST filter the broadcast
+                 engine applies.
+      Used by  : Broadcast flow eligibility, service-layer property scoping.
+      ACTION   : Confirm the driver and property column internal names.
+                 A driver may appear more than once (multi-property) - the
+                 service layer must not assume one row per driver.
+
+================================================================================
+SECTION 3 - REFACTORED LISTS  [MODIFY]
+================================================================================
+Both ship with a documented, REVERSIBLE migration script. Take a full list
+backup (export to Excel at minimum) before running either one.
+
+--------------------------------------------------------------------------------
+3.1  VehicleMaster                                                      [MODIFY]
+--------------------------------------------------------------------------------
+PROBLEM TODAY
+  Title holds the DRIVER'S NAME, and there is no vehicle type column at all,
+  which makes automatic matching impossible.
+
+CHANGE
+  Re-key to the number plate and extend. The existing driver-name relationship
+  is preserved as a DEFAULT ASSIGNMENT so no current data is lost and pool
+  allocation becomes possible.
+
+COLUMNS TO ADD OR ALTER
+  Display name   Internal name   Type                      Req  Idx  Note
+  -------------  --------------  ------------------------  ---  ---  ------------
+  PlateNo        PlateNo         Single line of text       YES  YES  Becomes the
+                                                                     Title. The
+                                                                     natural key.
+                                                                     Enforce
+                                                                     unique.
+  VehicleType    VehicleType     Lookup -> VehicleTypes     YES  YES  Mandatory
+                                 (show field: Title)                  for matching
+  Make           Make            Single line of text       no   no   Shown to the
+                                                                     requester on
+                                                                     confirmation
+  Model          Model           Single line of text       no   no   As above
+  Colour         Colour          Single line of text       no   no   As above
+  Capacity       Capacity        Number (integer, min 1)   no   no   Validated
+                                                                     against
+                                                                     NoOfPax
+  DefaultDriver  DefaultDriver   Lookup -> DriversMaster    no   no   The existing
+                                 (show field: DriverName)             Driver Name
+                                                                     relationship,
+                                                                     now OPTIONAL
+  Property       Property        Lookup -> PropertyMaster   no   YES  Scoping
+  Status         Status          Choice                    YES  YES  See below
+
+  Status choices (exact strings, do not localise in the list):
+      Available | On Trip | Under Maintenance | Retired
+      Default  : Available
+      WRITER   : Power Automate flows ONLY. Never set from a web part, never
+                 set by hand. A nightly reconciliation flow corrects drift.
+
+COLUMNS RETAINED UNTOUCHED (the logbook still joins on them)
+      Client, DriverID, UserID, Viewer, Approver, OldUserID
+
+MIGRATION STEPS (reversible)
+  1. Export the current list to Excel. Keep the file.
+  2. Add a temporary text column OldTitle. Copy Title into it for every row.
+     This is what makes the migration reversible.
+  3. Create the new columns above (VehicleTypes list must exist first).
+  4. Populate PlateNo for every row from the fleet register.
+  5. Populate VehicleType for every row. NO ROW MAY BE LEFT BLANK - a vehicle
+     with no type can never be matched.
+  6. Set DefaultDriver from OldTitle by matching the driver name to the new
+     DriversMaster.DriverName. Report every unmatched row for manual fixing.
+  7. Set Title = PlateNo for every row.
+  8. Set Status = Available for every active vehicle, Retired for the rest.
+  9. Verify, then and only then drop OldTitle.
+  ROLLBACK: Title = OldTitle, delete the added columns.
+
+--------------------------------------------------------------------------------
+3.2  DriversMaster                                                      [MODIFY]
+--------------------------------------------------------------------------------
+PROBLEM TODAY
+  Holds only Title. Driver identity is scattered as loose text across DriverID,
+  UserID, DriverName, OldUserID and UserPerson in four separate lists.
+
+CHANGE
+  Rebuilt as the single canonical driver record.
+
+COLUMNS
+  Display name        Internal name       Type                   Req  Idx
+  ------------------  ------------------  ---------------------  ---  ---
+  DriverName          DriverName          Single line of text    YES  no
+                      -> becomes Title
+  UserAccount         UserAccount         Person or Group        YES  YES
+                                          (People only)
+  DriverID            DriverID            Single line of text    no   YES
+  Phone               Phone               Single line of text    no   no
+  LicenceNumber       LicenceNumber       Single line of text    no   no
+  LicenceExpiry       LicenceExpiry       Date only              no   no
+  QualifiedVehicle-   QualifiedVehicle-   Lookup -> VehicleTypes no   no
+    Types               Types             MULTI-SELECT
+  HomeProperty        HomeProperty        Lookup->PropertyMaster no   YES
+  Status              Status              Choice                 YES  YES
+  MaxConcurrentTrips  MaxConcurrentTrips  Number, default 1      no   no
+  IsActive            IsActive            Yes/No, default Yes    no   YES
+
+  Status choices (exact strings):
+      Available | On Trip | On Leave | Inactive
+      Default  : Available
+      WRITER   : Power Automate flows ONLY.
+
+  Column notes
+      UserAccount     Identity for login, for targeting offers, and for the
+                      Accept check. The Claim flow compares the calling user
+                      against THIS column before it writes anything.
+      DriverID        Joins to the existing logbook lists. Keep the existing
+                      values exactly.
+      Phone           PERSONAL DATA. Released to a requester only after that
+                      driver has accepted, and only for that trip.
+      LicenceNumber   PERSONAL DATA, UAE PDPL. Visible to Fleet Admins ONLY.
+      LicenceExpiry   PERSONAL DATA, Fleet Admins only. An expiry that falls
+                      inside the trip window EXCLUDES the driver from the
+                      broadcast.
+      MaxConcurrent-  Cap for the AUTOMATIC engine only. A Coordinator may
+        Trips         exceed it manually, with the override recorded on the
+                      trip.
+      IsActive        Soft delete. Never delete a driver row - the logbook and
+                      TripStatusHistory reference it.
+
+MIGRATION STEPS (reversible)
+  1. Export the current list. Keep the file.
+  2. Add OldTitle, copy Title into it.
+  3. Create all columns above.
+  4. Set DriverName = OldTitle, then Title = DriverName.
+  5. Populate UserAccount for every driver. THIS IS THE BLOCKING STEP - a
+     driver with no UserAccount can never be offered a trip or accept one.
+     Report every blank before go-live.
+  6. Populate DriverID from the existing logbook values so the join holds.
+  7. Populate QualifiedVehicleTypes. A driver with none is excluded from
+     every broadcast, so treat blank as a data-quality failure, not a default.
+  8. Populate LicenceNumber, LicenceExpiry, Phone, HomeProperty from the
+     owning team (see OPEN QUESTION: who owns driver master data).
+  9. Set MaxConcurrentTrips = 1 and IsActive = Yes for all current drivers.
+  ROLLBACK: Title = OldTitle, delete the added columns.
+
+================================================================================
+SECTION 4 - NEW LISTS  [CREATE]
+================================================================================
+Create in this order. Lookups depend on it.
+
+      1. VehicleTypes          (no dependencies)
+      2. Locations             (needs PropertyMaster)
+      3. AllocationRules       (needs PropertyMaster)
+      4. DriversMaster         (refactor; needs VehicleTypes, PropertyMaster)
+      5. VehicleMaster         (refactor; needs VehicleTypes, DriversMaster)
+      6. TransportRequests     (needs PropertyMaster, Locations, VehicleTypes)
+      7. RideOffers            (needs TransportRequests, DriversMaster,
+                                VehicleMaster)
+      8. TripAssignments       (needs TransportRequests, DriversMaster,
+                                VehicleMaster)
+      9. TripStatusHistory     (needs TripAssignments)
+     10. AvailabilityBlocks    (needs DriversMaster, VehicleMaster,
+                                PropertyMaster)
+     11. NotificationLog       (needs TransportRequests, TripAssignments)
+     12. Templates             (no dependencies)
+     13. ReportSnapshot        (no dependencies)
+
+--------------------------------------------------------------------------------
+4.1  VehicleTypes                                                       [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  The eight vehicle types as DATA, not hard-coded in the web part.
+
+  Display name   Internal name  Type                        Req  Idx
+  -------------  -------------  --------------------------  ---  ---
+  Title          Title          Single line of text         YES  no
+  SuitableFor    SuitableFor    Choice, MULTI-SELECT        YES  no
+  Capacity       Capacity       Number (integer)            no   no
+  SortOrder      SortOrder      Number (integer)            no   no
+  IsActive       IsActive       Yes/No, default Yes         no   YES
+
+  SuitableFor choices (must match TransportRequests.RequestType EXACTLY):
+      Client or Client Guest | Staff | Items or Documents
+
+  SEED DATA - the eight types, in display order:
+  SortOrder  Title              SuitableFor                              Cap
+  ---------  -----------------  ---------------------------------------  ---
+      1      Patrol             Client or Client Guest; Staff             7
+      2      Pathfinder         Client or Client Guest; Staff             7
+      3      Kicks / Creta      Client or Client Guest; Staff             5
+      4      Cargo Van          Items or Documents                        2
+      5      Chiller Van        Items or Documents                        2
+      6      Hot and Cold Van   Items or Documents                        2
+      7      Animal Van         Items or Documents                        2
+      8      Others             Client or Client Guest; Staff;
+                                Items or Documents                        0
+  "Others" is the single free-text fallback. Selecting it reveals the ONLY
+  free-text field in the entire booking form.
+
+--------------------------------------------------------------------------------
+4.2  Locations                                                          [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  Removes free-text destinations. The destination picker reads this list
+         and nothing else.
+
+  Display name  Internal name  Type                           Req  Idx
+  ------------  -------------  -----------------------------  ---  ---
+  Title         Title          Single line of text            YES  no
+  Property      Property       Lookup -> PropertyMaster       no   YES
+  Address       Address        Multiple lines, plain text     no   no
+  Latitude      Latitude       Number, 6 decimal places       no   no
+  Longitude     Longitude      Number, 6 decimal places       no   no
+  Category      Category       Choice                         no   no
+  IsActive      IsActive       Yes/No, default Yes            no   YES
+
+  Category choices:
+      Office | Residence | Airport | Hospital | Hotel | Warehouse | Other
+
+  LATITUDE AND LONGITUDE ARE CREATED ON DAY ONE AND LEFT EMPTY.
+  Phase 2 geocoding and calculated ETA then need no schema migration. Do not
+  remove them because they look unused.
+
+--------------------------------------------------------------------------------
+4.3  AllocationRules                                                    [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  Per-property, per-request-type configuration of the dispatch engine.
+         Changing any of this is a LIST EDIT, never a redeployment.
+
+  Display name              Internal name            Type              Req  Idx
+  ------------------------  -----------------------  ----------------  ---  ---
+  Title                     Title                    Text              YES  no
+  Property                  Property                 Lookup ->         YES  YES
+                                                     PropertyMaster
+  RequestType               RequestType              Choice            YES  no
+  Mode                      Mode                     Choice            YES  no
+  OfferWindowMinutes        OfferWindowMinutes       Number, def 5     YES  no
+  MaxConcurrentTripsPer-    MaxConcurrentTripsPer-   Number, def 1     YES  no
+    Driver                    Driver
+  AdvanceReleaseHours       AdvanceReleaseHours      Number, def 4     YES  no
+  IsActive                  IsActive                 Yes/No, def Yes   no   YES
+  NotifyEnRoute             NotifyEnRoute            Yes/No, def Yes   no   no
+  NotifyInTransit           NotifyInTransit          Yes/No, def Yes   no   no
+
+  RequestType choices:  Client or Client Guest | Staff | Items or Documents
+  Mode choices:         Automatic | Manual
+
+  NotifyEnRoute / NotifyInTransit implement the "volume discipline" rule: a
+  requester who booked a two-minute internal transfer does not need three
+  emails about it. These two were described in the prose but were missing from
+  the requirements column list - they are added here deliberately.
+
+  SEED: one row per property per request type. Defaults 5 / 1 / 4, Automatic.
+
+--------------------------------------------------------------------------------
+4.4  TransportRequests                                                  [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  The digital TRF. One row per booking.
+GROWTH   Passes 5,000 items. Index and filter every view.
+
+  Display name          Internal name        Type                    Req  Idx
+  --------------------  -------------------  ----------------------  ---  ---
+  RequestId             RequestId            Single line of text     YES  YES
+                        -> becomes Title
+  RequestType           RequestType          Choice                  YES  no
+  Requester             Requester            Person or Group         YES  YES
+  Property              Property             Lookup->PropertyMaster  YES  YES
+  PickupLocation        PickupLocation       Lookup -> Locations     YES  no
+  DropOffLocation       DropOffLocation      Lookup -> Locations     YES  no
+  RequiredDateTime      RequiredDateTime     Date and Time           YES  YES
+  ReturnDateTime        ReturnDateTime       Date and Time           no   no
+  NoOfPax               NoOfPax              Number (integer)        no   no
+  VehicleTypeRequested  VehicleTypeRequested Lookup -> VehicleTypes  YES  no
+  OtherVehicleText      OtherVehicleText     Single line of text     no   no
+  ItemDescription       ItemDescription      Choice                  no   no
+  ItemNotes             ItemNotes            Multiple lines, plain   no   no
+  Priority              Priority             Choice                  YES  no
+  Status                Status               Choice                  YES  YES
+  OfferClosesAt         OfferClosesAt        Date and Time           no   YES
+  ReleaseAt             ReleaseAt            Date and Time           no   YES
+  AcceptedTrip          AcceptedTrip         Lookup->TripAssignments no   no
+  Remarks               Remarks              Multiple lines, plain   no   no
+  RejectionReason       RejectionReason      Multiple lines, plain   no   no
+  CancellationReason    CancellationReason   Multiple lines, plain   no   no
+
+  RequestType choices:  Client or Client Guest | Staff | Items or Documents
+  Priority choices:     Normal | Urgent          (default Normal)
+  Status choices (EXACT - flows and web parts both depend on these strings):
+      Submitted | Held | Broadcasting | Awaiting Coordinator | Allocated |
+      Completed | Rejected | Cancelled
+      Default: Submitted
+
+  Status ownership
+      Submitted .............. System, on create
+      Held ................... System, advance booking waiting for release
+      Broadcasting ........... Broadcast flow
+      Awaiting Coordinator ... Expire flow
+      Allocated .............. Claim flow OR Coordinator
+      Completed .............. Complete flow
+      Rejected ............... Coordinator
+      Cancelled .............. Requester, Driver or Coordinator
+
+  Column notes
+      RequestId        Prefix + SharePoint item ID zero-padded to 4 digits,
+                       computed ON CREATE. A separate counter item WOULD RACE
+                       under concurrent intake and MUST NOT be used.
+                       >>> OPEN: format is FB-0001 or FB-20260925-0001.
+                           Both appear in the mockups. Must be decided before
+                           build. Implemented as a configurable switch - see
+                           src/common/config/AppConfig.ts.
+      NoOfPax          Collected for Client and Staff only. Validated against
+                       the allocated vehicle's Capacity.
+      ItemDescription  Replaces NoOfPax for Items or Documents requests.
+                       Choices: Documents | Parcel | Equipment | Medical |
+                                Food | Other
+      OtherVehicleText The ONLY free-text field in the booking form. Populated
+                       only when VehicleTypeRequested = Others.
+      OfferClosesAt    Written by the Broadcast flow as now + rule window.
+                       The Expire flow reads it every minute.
+      ReleaseAt        Advance bookings only. Computed as RequiredDateTime
+                       minus AdvanceReleaseHours. A scheduled flow releases
+                       the request to broadcast at this time. Not in the
+                       requirements column list but REQUIRED by the "advance
+                       bookings are not broadcast on submission" rule.
+
+  ITEM-LEVEL PERMISSIONS
+      Set the list to "Read items that were created by the user" and "Create
+      items and edit items that were created by the user". That covers the
+      requester case with no custom code.
+
+  INDEXES (before go-live): Status, RequiredDateTime, Property, Requester,
+      OfferClosesAt, ReleaseAt, Created.
+  VIEWS: every default view must filter on an indexed column. Page at 50.
+
+--------------------------------------------------------------------------------
+4.5  RideOffers                                                         [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  One row per driver per broadcast. This is the complete record of who
+         was offered a trip and who declined - what lets you defend an
+         allocation in a fairness dispute.
+GROWTH   THE FASTEST-GROWING LIST IN THE SOLUTION. One row per eligible driver
+         per request. Archive aggressively.
+
+  Display name     Internal name    Type                        Req  Idx
+  ---------------  ---------------  --------------------------  ---  ---
+  Title            Title            Single line of text         YES  no
+  Request          Request          Lookup->TransportRequests   YES  YES
+  Driver           Driver           Lookup -> DriversMaster     YES  YES
+  Vehicle          Vehicle          Lookup -> VehicleMaster     no   no
+  OfferedOn        OfferedOn        Date and Time               YES  YES
+  ResponseStatus   ResponseStatus   Choice                      YES  YES
+  RejectionReason  RejectionReason  Choice                      no   no
+  RejectionNotes   RejectionNotes   Multiple lines, plain       no   no
+  RespondedOn      RespondedOn      Date and Time               no   no
+
+  ResponseStatus choices (EXACT):
+      Pending | Accepted | Rejected | Expired | Closed | Withdrawn
+      Default: Pending
+      Pending   - offer is open, window running
+      Accepted  - this driver won the race
+      Rejected  - driver declined with a reason
+      Expired   - window closed with no response
+      Closed    - another driver accepted first
+      Withdrawn - the Coordinator assigned manually, skipping the broadcast
+
+  RejectionReason choices (EXACT - this is a dropdown for the driver, never
+  free text, because it is reported on):
+      Already on a trip | Vehicle unavailable | Outside my shift |
+      Personal reason | Other
+      RejectionNotes is only shown when "Other" is chosen.
+
+  VEHICLE IS USUALLY BLANK AT BROADCAST TIME. The broadcast confirms only that
+  a suitable vehicle EXISTS. The vehicle is bound at CLAIM time. Binding a
+  vehicle to every offer would reserve the whole fleet against offers that
+  will mostly be declined.
+
+  INDEXES: Request, Driver, ResponseStatus, OfferedOn.
+
+--------------------------------------------------------------------------------
+4.6  TripAssignments                                                    [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  Created ONLY when a driver accepts, or when the Coordinator assigns
+         manually. No trip row exists for a request nobody took.
+
+  Display name        Internal name       Type                       Req  Idx
+  ------------------  ------------------  -------------------------  ---  ---
+  TripId              TripId              Single line of text        YES  YES
+                      -> becomes Title
+  Request             Request             Lookup->TransportRequests  YES  YES
+  Driver              Driver              Lookup -> DriversMaster    YES  YES
+  Vehicle             Vehicle             Lookup -> VehicleMaster    YES  YES
+  AcceptedOn          AcceptedOn          Date and Time              YES  no
+  TripStatus          TripStatus          Choice                     YES  YES
+  EtaMinutes          EtaMinutes          Number (integer)           no   no
+  EtaUpdatedOn        EtaUpdatedOn        Date and Time              no   no
+  ActualStartTime     ActualStartTime     Date and Time              no   no
+  ActualPickupTime    ActualPickupTime    Date and Time              no   no
+  ActualDropTime      ActualDropTime      Date and Time              no   no
+  OpeningReading      OpeningReading      Number (integer)           no   no
+  ClosingReading      ClosingReading      Number (integer)           no   no
+  AllocationMode      AllocationMode      Choice                     YES  no
+  AllocatedBy         AllocatedBy         Person or Group            no   no
+  IsOverride          IsOverride          Yes/No, default No         no   no
+  OverrideReason      OverrideReason      Multiple lines, plain      no   no
+  CancellationReason  CancellationReason  Multiple lines, plain      no   no
+
+  TripStatus choices (EXACT):
+      Assigned | En Route | In Transit | Completed | Cancelled
+      Default: Assigned
+
+  AllocationMode choices:  Automatic | Manual
+
+  Column notes
+      TripId          Same scheme as RequestId, different prefix (TR-).
+      EtaMinutes      PHASE 1: entered by hand by the Coordinator or driver.
+                      Displayed as "approx. 15 min" WITH EtaUpdatedOn, so
+                      nobody mistakes it for a live calculation. Phase 2
+                      populates it from a routing service with NO interface
+                      change. EtaUpdatedOn is not in the requirements column
+                      list but the display rule requires it.
+      OpeningReading  Captured at the "On my way" tap.
+      ClosingReading  Prompted for at the "Complete" tap.
+                      Both flow into Daily Trip Sheet, removing a re-keying
+                      step the drivers do today.
+      IsOverride /    Set when the Coordinator makes an out-of-policy choice:
+      OverrideReason  a driver already at their concurrent cap, or a vehicle
+                      of a different type. The reason is MANDATORY and is
+                      recorded on the trip. Split out from the requirements'
+                      single "override recorded on the trip" sentence so it
+                      can be reported on.
+
+  INDEXES: Request, Driver, Vehicle, TripStatus, AcceptedOn.
+
+--------------------------------------------------------------------------------
+4.7  TripStatusHistory                                                  [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  Append-only. Powers the requester's Track My Ride timeline and the
+         audit trail.
+
+  Display name  Internal name  Type                       Req  Idx
+  ------------  -------------  -------------------------  ---  ---
+  Title         Title          Single line of text        YES  no
+  Trip          Trip           Lookup->TripAssignments    YES  YES
+  FromStatus    FromStatus     Single line of text        no   no
+  ToStatus      ToStatus       Single line of text        YES  no
+  ChangedBy     ChangedBy      Person or Group            YES  no
+  ChangedOn     ChangedOn      Date and Time              YES  YES
+  Comment       Comment        Multiple lines, plain      no   no
+
+  APPEND-ONLY. NO GROUP RECEIVES DELETE, INCLUDING ADMINS.
+  FromStatus is text, not choice, because it spans both the request status set
+  and the trip status set.
+
+--------------------------------------------------------------------------------
+4.8  AvailabilityBlocks                                                 [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  Shifts, leave and maintenance in ONE list, for drivers and vehicles
+         alike.
+
+  Display name   Internal name  Type                       Req  Idx
+  -------------  -------------  -------------------------  ---  ---
+  Title          Title          Single line of text        YES  no
+  Driver         Driver         Lookup -> DriversMaster    no   YES
+  Vehicle        Vehicle        Lookup -> VehicleMaster    no   YES
+  FromDateTime   FromDateTime   Date and Time              YES  YES
+  ToDateTime     ToDateTime     Date and Time              YES  YES
+  BlockType      BlockType      Choice                     YES  no
+  Property       Property       Lookup->PropertyMaster     no   no
+  Notes          Notes          Multiple lines, plain      no   no
+
+  BlockType choices:
+      Leave | Shift | Maintenance | Other
+
+  EXACTLY ONE of Driver or Vehicle is set on any row. A row with both, or
+  neither, is a data error - validate it in the Fleet Admin form.
+  A driver or vehicle blocked across any part of the trip window is EXCLUDED
+  from the broadcast.
+
+--------------------------------------------------------------------------------
+4.9  NotificationLog                                                    [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  Delivery audit. Every send, with its outcome.
+
+  Display name     Internal name    Type                       Req  Idx
+  ---------------  ---------------  -------------------------  ---  ---
+  Title            Title            Single line of text        YES  no
+  RelatedRequest   RelatedRequest   Lookup->TransportRequests  no   YES
+  RelatedTrip      RelatedTrip      Lookup->TripAssignments    no   YES
+  Channel          Channel          Choice                     YES  no
+  Recipient        Recipient        Single line of text        YES  no
+  TemplateKey      TemplateKey      Single line of text        YES  no
+  SentOn           SentOn           Date and Time              YES  YES
+  Outcome          Outcome          Choice                     YES  YES
+  ErrorMessage     ErrorMessage     Multiple lines, plain      no   no
+  RetryCount       RetryCount       Number, default 0          no   no
+
+  Channel choices:  Email            (phase 1 has one channel only; the column
+                                      exists so phase 2 push needs no change)
+  Outcome choices:  Sent | Failed | Retrying
+
+  APPEND-ONLY. NO GROUP RECEIVES DELETE, INCLUDING ADMINS.
+  Recipient is an e-mail address as plain text, NOT a Person column - the
+  recipient may be an external client guest with no account.
+  Three retries with exponential backoff. A failure writes Outcome = Failed
+  AND raises a Coordinator alert, because a silent failure means a driver
+  never learns they have a trip.
+
+--------------------------------------------------------------------------------
+4.10  Templates                                                         [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  E-mail wording lives HERE, not inside flow definitions, so wording and
+         language can change without a redeployment.
+NOTE     Required by the Notifications section of the requirements but absent
+         from every table in it. Specified here.
+
+  Display name  Internal name  Type                        Req  Idx
+  ------------  -------------  --------------------------  ---  ---
+  Title         Title          Single line of text         YES  no
+                               (the TemplateKey)
+  Language      Language       Choice: en | ar             YES  YES
+  Subject       Subject        Single line of text         YES  no
+  Body          Body           Multiple lines, ENHANCED    YES  no
+                               rich text
+  IsActive      IsActive       Yes/No, default Yes         no   YES
+
+  TemplateKeys required by the notification matrix:
+      RequestSubmitted.Requester
+      BroadcastOpened.Driver          <-- the highest-value message in the
+                                          system. Subject line must be
+                                          readable from a lock-screen preview:
+                                          pickup, destination and time. Body
+                                          carries a deep link that opens the
+                                          dashboard with that offer in view.
+      DriverAccepted.Driver
+      DriverAccepted.Requester
+      WindowExpired.Coordinator
+      ManualAssign.Driver
+      ManualAssign.Requester
+      StatusEnRoute.Requester
+      StatusInTransit.Requester
+      TripCompleted.Requester
+      Cancelled.Driver
+      Cancelled.Requester
+      Cancelled.Coordinator
+      RequestRejected.Requester
+      NotificationFailed.Coordinator
+
+  Body is the ONLY rich-text field in the solution. It is SANITISED before
+  rendering anywhere in a web part - see the brand guideline's "text is never
+  injected as HTML" rule.
+
+--------------------------------------------------------------------------------
+4.11  ReportSnapshot                                                    [CREATE]
+--------------------------------------------------------------------------------
+PURPOSE  Pre-aggregated report rows. DO NOT AGGREGATE THOUSANDS OF LIST ITEMS
+         IN THE BROWSER. A nightly flow writes closed periods here; the Reports
+         web part reads snapshots for closed periods and live items only for
+         the current day.
+NOTE     Required by the Reports section of the requirements but absent from
+         every table in it. Specified here.
+
+  Display name  Internal name  Type                        Req  Idx
+  ------------  -------------  --------------------------  ---  ---
+  Title         Title          Single line of text         YES  no
+  ReportKey     ReportKey      Choice                      YES  YES
+  PeriodStart   PeriodStart    Date only                   YES  YES
+  PeriodEnd     PeriodEnd      Date only                   YES  no
+  Property      Property       Lookup->PropertyMaster      no   YES
+  DimensionKey  DimensionKey   Single line of text         no   no
+  DimensionName DimensionName  Single line of text         no   no
+  MetricsJson   MetricsJson    Multiple lines, PLAIN text  YES  no
+  GeneratedOn   GeneratedOn    Date and Time               YES  no
+
+  ReportKey choices (one per report):
+      TripSummary | VehicleUtilisation | DriverUtilisation |
+      RequestFulfilment | BroadcastEffectiveness | DriverResponseBehaviour |
+      RejectionCancellationAnalysis | DemandByTimeAndRoute
+
+  MetricsJson holds the measures as a JSON object so a new measure does not
+  need a new column. DimensionKey/DimensionName hold the group-by value
+  (vehicle id and plate, driver id and name, hour of day, and so on).
+
+================================================================================
+SECTION 5 - SHAREPOINT GROUPS AND PERMISSIONS
+================================================================================
+Five groups. Every rule is enforced HERE or in a flow. A rule that exists only
+in the web part is NOT a rule: any user who can read a list can read every item
+in it through the REST API regardless of what the interface shows.
+
+  Group            Master data   TransportRequests        RideOffers
+  ---------------  ------------  -----------------------  ------------
+  FM Requesters    None          Add, read + edit OWN     None
+  FM Drivers       Read          Read own property        Read own
+  FM Coordinators  Read          Contribute               Read
+  FM Admins        Full control  Contribute               Read
+  FM Viewers       Read          Read                     Read
+
+  Group            TripAssignments  Reports
+  ---------------  ---------------  -------
+  FM Requesters    Read own         None
+  FM Drivers       Read own         None
+  FM Coordinators  Contribute       Read
+  FM Admins        Contribute       Read
+  FM Viewers       Read             Read
+
+  "Master data" above means: PropertyMaster, DLClientMaster, VehicleMaster,
+  DriversMaster, VehicleTypes, Locations, AllocationRules, Templates.
+
+  DRIVERS GET NO DIRECT WRITE PERMISSION ON RideOffers OR TripAssignments.
+  "Edit only the trips assigned to me" and "accept only offers made to me"
+  cannot be expressed through SharePoint item-level permissions. Driver writes
+  therefore go through Power Automate flows running under a SERVICE IDENTITY,
+  which verify that the calling user matches DriversMaster.UserAccount on the
+  relevant offer or trip BEFORE writing.
+
+  NO GROUP RECEIVES DELETE ON TripStatusHistory OR NotificationLog, INCLUDING
+  ADMINS. Both are append-only audit lists.
+
+  Enable SharePoint audit logging on the site. Retention period to be set by
+  the compliance team.
+
+  PERSONAL DATA (UAE PDPL)
+      DriversMaster.LicenceNumber and .LicenceExpiry  -> Fleet Admins ONLY
+      DriversMaster.Phone  -> released to a requester only after that driver
+                              accepts, and only for that trip
+      The requester's phone -> released to the driver on the same basis
+      No personal data in any log. Correlation ID on every write path.
+
+================================================================================
+SECTION 6 - INDEXES, VIEWS AND THE 5,000 ITEM THRESHOLD
+================================================================================
+These four lists WILL pass 5,000 items:
+      TransportRequests, RideOffers, TripAssignments, TripStatusHistory
+RideOffers grows fastest - one row per eligible driver per request.
+
+BEFORE GO-LIVE
+  1. Create every index marked Idx above. Indexes cannot be added once a list
+     is over the threshold without a maintenance window.
+  2. Filter EVERY default view on an indexed column. An unfiltered view on a
+     list over 5,000 items throws, and it throws for everyone at once.
+  3. Set page size to 50 on every view and in every service-layer query.
+  4. Schedule the monthly archive: completed trips older than 24 months move
+     to an archive list. RideOffers rows for closed requests older than 12
+     months may be archived earlier.
+
+SERVICE-LAYER RULE
+  At most 4 batched REST calls on a dashboard load. Verified by network trace
+  at code review.
+
+================================================================================
+SECTION 7 - PROVISIONING
+================================================================================
+A PnP provisioning script creates all lists with their columns, indexes, views,
+content types and groups FROM SCRATCH, so the solution can be stood up on a
+clean site by someone who did not build it.
+
+  Order        : Section 4 lists in the numbered order given there.
+  Reversible   : the two refactored lists ship with a documented rollback.
+  Environments : travel-dev (development) -> UAT -> Production.
+                 No manual deployment to production.
+  Flows        : held in a solution, promoted with ENVIRONMENT VARIABLES for
+                 list URLs and configuration. Flows edited directly in
+                 production are the most common cause of drift in Power
+                 Automate projects and are PROHIBITED.
+
+================================================================================
+SECTION 8 - OPEN QUESTIONS THAT CHANGE THIS SPECIFICATION
+================================================================================
+In the order they block work. Each one is carried from the requirements
+document; the answer changes the schema or the build.
+
+  [ ] 1. DO DRIVERS HAVE A MAILBOX?  <-- HIGHEST PRIORITY
+         They have accounts but no Teams. Without a mailbox the broadcast
+         e-mail cannot be sent and the ONLY route to the driver is the
+         dashboard poll. This changes the whole driver-engagement design, not
+         just a column.
+
+  [ ] 2. REQUEST ID FORMAT.  FB-0001 or FB-20260925-0001?
+         Both appear in the mockups. Implemented as a switch in
+         src/common/config/AppConfig.ts, defaulting to FB-0001. Must be
+         decided BEFORE the first production request is created - the format
+         cannot be changed afterwards without reissuing every identifier.
+
+  [ ] 3. STATUS SET.  Four driver taps (Assigned, En Route, In Transit,
+         Completed) are specified and built. If Picked Up and En Route must
+         remain SEPARATE chips, that adds a fifth tap and a fifth TripStatus
+         choice.
+
+  [ ] 4. WHO OWNS DRIVER MASTER DATA?
+         The DriversMaster rebuild needs licence numbers, expiry dates, phone
+         numbers and vehicle-type qualifications FOR EVERY DRIVER. HR or the
+         fleet team? This blocks migration step 7 and 8, which block the
+         broadcast engine entirely.
+
+  [ ] 5. IS PLUMSAIL FORMS THE HOUSE STANDARD?
+         DriverLogs carries a Plumsail data table. If Plumsail is standard the
+         requester form could be built with it rather than SPFx, which changes
+         the build materially.
+
+  [ ] 6. CLIENT AND CLIENT GUEST REQUESTS - does the external client ever log
+         in themselves, or does a staff member always raise the request on
+         their behalf? External login means additional licensing and a
+         different security model.
+
+  [ ] 7. HOW MANY PROPERTIES, and should a Coordinator at one property ever
+         see another property's requests?
+
+  [ ] 8. LOCATIONS MASTER - who owns it, how many entries at launch, and may a
+         requester propose a new location? (If yes, Locations needs an
+         approval column and a proposed-by column.)
+
+  [ ] 9. ARABIC AT LAUNCH OR LATER?
+         Right-to-left is inexpensive to design in now and expensive to
+         retrofit. The Templates list already carries a Language column for
+         this reason.
+
+  [ ] 10. RETENTION for completed trips and for driver personal data.
+          Drives the archive schedule in Section 6.
+
+  [ ] 11. VOLUMES - trips per day, number of drivers and vehicles. These drive
+          the indexing and threshold strategy and the Power Automate plan.
+
+================================================================================
+SECTION 9 - NAMING NOTE
+================================================================================
+The dashboard mockup header reads "Coordinater". The correct spelling is
+COORDINATOR. It is spelled correctly throughout this specification, in every
+group name, every column and every screen. Fix it in the mockup before it
+reaches a SharePoint group name.
+
+The existing list DrvierEntries carries a similar transposition. It is
+referenced by live workflows and MUST BE LEFT ALONE. Do not "fix" it.
+
+================================================================================
+CHANGE LOG
+================================================================================
+2026-10-01  Added section 10 (what the SPFx solution assumes at runtime).
+2026-10-01  Initial specification derived from the requirements document.
+            Added, beyond the requirements' own column tables, with reasons:
+              - AllocationRules.NotifyEnRoute / .NotifyInTransit
+                (required by the volume-discipline rule in the prose)
+              - TransportRequests.ReleaseAt
+                (required by the advance-booking release rule)
+              - TransportRequests.ItemDescription / .ItemNotes
+                (required by "item description replaces passenger count")
+              - TransportRequests.RejectionReason / .CancellationReason
+                (required by the Rejected and Cancelled statuses)
+              - TripAssignments.EtaUpdatedOn
+                (required by the "approx. 15 min, last updated" display rule)
+              - TripAssignments.IsOverride / .OverrideReason
+                (required by the manual out-of-policy assignment rule)
+              - RideOffers.RejectionNotes
+                (required by the "Other" rejection reason)
+              - NotificationLog.RetryCount
+                (required by the three-retries resilience rule)
+              - Templates list      (required by the Notifications section)
+              - ReportSnapshot list (required by the Reports section)
+            Flagged the 17-vs-20 list count discrepancy in Section 0.
+================================================================================
+
+================================================================================
+SECTION 10 - WHAT THE SPFx SOLUTION ASSUMES, AND WHERE IT WILL TELL YOU
+================================================================================
+The web parts are built against this specification. Where the requirements did
+not supply a name, the code makes an assumption and SAYS SO at runtime rather
+than failing silently.
+
+  ASSUMED, NEEDS CONFIRMING
+    DLClientMaster.Driver and .Property
+        The service layer filters on these internal names. If they differ,
+        driver property scoping falls back to DriversMaster.HomeProperty and
+        writes a console warning naming this file. Confirm before go-live:
+        a driver allocated to a second property will otherwise not see that
+        property's requests.
+    PropertyMaster.Title
+        Used for the property name throughout. Confirm.
+
+  WRITTEN BY THE WEB PART (the only direct write in the solution)
+    TransportRequests - item creation, then RequestId written back from the
+    SharePoint item ID. Everything else goes through a flow.
+
+  READ BUT NEVER WRITTEN BY THE WEB PARTS
+    VehicleTypes, Locations, AllocationRules, PropertyMaster, DLClientMaster,
+    DriversMaster, VehicleMaster, RideOffers, TripAssignments,
+    TripStatusHistory, AvailabilityBlocks
+
+  NEVER READ BY THE BOOKING WEB PART, DELIBERATELY
+    VehicleMaster, DriversMaster, AvailabilityBlocks, TripAssignments.
+    The requester chooses a vehicle TYPE, never a vehicle, and the booking
+    web part does not query availability at all - anything it read would be
+    reachable by that user through the REST API regardless of what the
+    interface displays.
+
+  FLOW ENDPOINTS THE WEB PARTS CALL
+    claim, respondToOffer, updateTripStatus, manualAssign, cancel, reject,
+    setEta. Each is a web part property, set per environment. Until one is
+    configured, that action fails with a message naming which URL is missing -
+    it does not fail silently.

@@ -1,0 +1,593 @@
+@import '../styles/tokens';
+
+// =============================================================================
+// Page shell
+// =============================================================================
+// The application runs full width with the page container squared off at the
+// edges, as the brand guideline describes.
+
+.shell {
+  font-family: $font-body;
+  color: $brand-dark;
+  background: $white;
+  border-radius: $radius-container;
+  box-shadow: $shadow-container;
+  padding: $pad-panel-y $pad-panel-x;
+  box-sizing: border-box;
+
+  @media (max-width: $bp-narrow) {
+    padding: $pad-panel-sm;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  * { box-sizing: border-box; }
+}
+
+.shellHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $gap-md;
+  flex-wrap: wrap;
+  margin-bottom: $gap-lg;
+}
+
+.pageHeading { @include page-heading; }
+
+.sectionHeading {
+  @include section-heading;
+  margin-bottom: $gap-md;
+}
+
+.caption { @include caption; }
+
+.headerActions {
+  display: flex;
+  gap: $gap-sm;
+  flex-wrap: wrap;
+}
+
+// =============================================================================
+// Buttons
+// =============================================================================
+
+.btnPrimary     { @include button-primary; }
+.btnSecondary   { @include button-secondary; }
+.btnDestructive { @include button-destructive; }
+.btnAction      { @include button-action; }
+
+.btnBlock { width: 100%; }
+
+// =============================================================================
+// Badges
+// =============================================================================
+// White text on its colour, 12px Roboto at weight 700, fully rounded.
+// ALWAYS rendered with its label - nothing here is distinguished by colour
+// alone.
+
+.badgeHealthy   { @include badge($state-healthy); }
+.badgeAttention { @include badge($state-attention); }
+.badgeProgress  { @include badge($state-progress); }
+.badgeException { @include badge($state-exception); }
+.badgeNeutral   { @include badge($state-neutral); }
+
+// =============================================================================
+// Panels and cards
+// =============================================================================
+
+.panel { @include panel; }
+
+.panelPlain {
+  @include panel;
+  background: $white;
+}
+
+.card {
+  @include panel;
+  display: flex;
+  flex-direction: column;
+  gap: $gap-sm;
+}
+
+.cardTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $gap-sm;
+}
+
+.cardTitle {
+  font-family: $font-heading;
+  font-size: $size-section-heading;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+}
+
+// Reference numbers are set in the heading face.
+.reference {
+  font-family: $font-heading;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+}
+
+.fieldRow {
+  display: flex;
+  gap: $gap-sm;
+  font-size: $size-table-cell;
+  line-height: 1.55;
+}
+
+.fieldLabel {
+  color: $muted;
+  min-width: 110px;
+  flex: 0 0 auto;
+}
+
+.fieldValue {
+  color: $brand-dark;
+  font-weight: 500;
+}
+
+// =============================================================================
+// Counter tiles
+// =============================================================================
+// Counters are filter shortcuts, not static numbers - each one navigates.
+
+.counterRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: $gap-md;
+  margin-bottom: $gap-lg;
+}
+
+.counter {
+  @include panel;
+  @include focus-ring;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid $border;
+  transition: background-color $transition, box-shadow $transition;
+
+  &:hover { background: $brand-row-alt; }
+}
+
+.counterActive {
+  background: $brand-dark;
+
+  .counterValue, .counterLabel { color: $brand-light; }
+  &:hover { background: $brand-hover; }
+}
+
+.counterValue {
+  // A figure, so it takes the heading face.
+  font-family: $font-heading;
+  font-size: 28px;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+  line-height: 1.1;
+}
+
+.counterLabel {
+  font-family: $font-body;
+  font-size: $size-hint;
+  font-weight: $weight-caption;
+  color: $muted;
+}
+
+.counterMeta {
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $muted;
+}
+
+// =============================================================================
+// Tables
+// =============================================================================
+// Every grid is a real <table> with a <caption>, scrolling horizontally inside
+// its own focusable, labelled region.
+
+.gridRegion {
+  @include grid-region;
+  position: relative;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $brand-dark;
+
+  @media (max-width: $bp-narrow) {
+    font-size: $size-table-cell-sm;
+  }
+}
+
+// The caption names the grid for a screen reader. It is not hidden from sight
+// by default; where a visible heading already says the same thing, pass
+// captionVisuallyHidden.
+.caption-visible {
+  @include caption;
+  text-align: left;
+  padding: $gap-sm $pad-cell;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: $brand-dark;
+  color: $brand-light;
+  font-family: $font-heading;
+  font-size: $size-table-header;
+  font-weight: $weight-table-header;
+  text-align: left;
+  padding: $pad-cell;
+  white-space: nowrap;
+
+  @media (max-width: $bp-narrow) {
+    padding: $pad-cell-sm;
+  }
+}
+
+.table tbody td {
+  padding: $pad-cell;
+  border-top: 1px solid $border;
+  vertical-align: middle;
+
+  @media (max-width: $bp-narrow) {
+    padding: $pad-cell-sm;
+  }
+}
+
+// Rows alternate white and cream. The difference is deliberately slight - it
+// guides the eye along a row without striping the page.
+.table tbody tr:nth-child(odd)  { background: $white; }
+.table tbody tr:nth-child(even) { background: $brand-row-alt; }
+
+.rowPinned {
+  // Anything Awaiting Coordinator is pinned to the top. The left edge carries
+  // the amber, and the row still shows its status badge in words.
+  box-shadow: inset 3px 0 0 0 $state-attention;
+}
+
+.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+
+// A filterable header becomes a button showing a caret, and a funnel mark when
+// a filter is set.
+.filterButton {
+  @include focus-ring;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filterMark {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+// The filter list is a popup of the values that column actually holds, never
+// a free-text box.
+.filterPopup {
+  position: absolute;
+  z-index: 10;
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-field;
+  padding: $gap-sm;
+  min-width: 200px;
+  max-height: 280px;
+  overflow: auto;
+  box-shadow: $shadow-card;
+}
+
+.filterOption {
+  display: flex;
+  align-items: center;
+  gap: $gap-sm;
+  padding: 6px 8px;
+  border-radius: $radius-action;
+  font-size: $size-table-cell;
+  cursor: pointer;
+
+  &:hover { background: $brand-row-alt; }
+}
+
+.filterActions {
+  display: flex;
+  gap: $gap-sm;
+  padding-top: $gap-sm;
+  border-top: 1px solid $border;
+  margin-top: $gap-sm;
+}
+
+.rowActions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+// =============================================================================
+// Forms
+// =============================================================================
+
+.field { @include field; }
+
+.formRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: $gap-md;
+}
+
+.label {
+  font-family: $font-body;
+  font-size: $size-caption;
+  font-weight: $weight-caption;
+  color: $brand-dark;
+}
+
+.hint {
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $muted;
+}
+
+.validation {
+  font-family: $font-body;
+  font-size: $size-hint;
+  font-weight: $weight-caption;
+  color: $status-red;
+}
+
+.required::after {
+  content: ' *';
+  color: $status-red;
+}
+
+// The command bar sticks to the bottom of the viewport so Submit and Cancel
+// stay in reach on a long form.
+.commandBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: $gap-sm;
+  padding: $gap-md 0;
+  background: $white;
+  box-shadow: $shadow-card;
+  margin-top: $gap-lg;
+}
+
+// Selectable tiles - request type cards, vehicle type tiles.
+// FORM TILES CARRY NO SHADOW AT ALL.
+.tileGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: $gap-md;
+}
+
+.tile {
+  @include focus-ring;
+  background: $brand-light;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  padding: $pad-panel-y $pad-panel-x;
+  text-align: left;
+  cursor: pointer;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $brand-dark;
+  transition: background-color $transition, border-color $transition;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  &:hover { background: $brand-row-alt; }
+
+  @media (max-width: $bp-narrow) {
+    padding: $pad-panel-sm;
+  }
+}
+
+.tileSelected {
+  background: $brand-dark;
+  border-color: $brand-dark;
+  color: $brand-light;
+
+  .tileCaption { color: $brand-light; }
+  &:hover { background: $brand-hover; }
+}
+
+.tileTitle {
+  font-family: $font-heading;
+  font-weight: $weight-heading;
+  font-size: $size-section-heading;
+}
+
+.tileCaption {
+  font-size: $size-hint;
+  color: $muted;
+}
+
+// The tile's selected state is carried by a word as well as by colour.
+.tileMark {
+  font-size: $size-hint;
+  font-weight: $weight-badge;
+}
+
+// =============================================================================
+// Timeline
+// =============================================================================
+// A vertical timeline with a completed, current and pending marker per stage,
+// each showing its actual time once reached.
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timelineItem {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: $gap-md;
+  padding-bottom: $gap-lg;
+  position: relative;
+
+  &:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 20px;
+    bottom: 0;
+    width: 2px;
+    background: $border;
+  }
+}
+
+.timelineMarker {
+  width: 20px;
+  height: 20px;
+  border-radius: $radius-badge;
+  border: 2px solid $border;
+  background: $white;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: $weight-badge;
+  color: $white;
+}
+
+.markerDone {
+  background: $state-healthy;
+  border-color: $state-healthy;
+}
+
+.markerCurrent {
+  background: $state-progress;
+  border-color: $state-progress;
+}
+
+.markerPending {
+  background: $white;
+  border-color: $border;
+}
+
+.timelineLabel {
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  font-weight: 500;
+  color: $brand-dark;
+}
+
+.timelineTime {
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $muted;
+}
+
+// The stage's state is spelled out, not left to the marker colour.
+.timelineState {
+  font-family: $font-body;
+  font-size: $size-hint;
+  font-weight: $weight-caption;
+  color: $muted;
+}
+
+// =============================================================================
+// Messages
+// =============================================================================
+
+.errorBanner {
+  border: 1px solid $status-red;
+  border-left: 4px solid $status-red;
+  border-radius: $radius-card;
+  background: $white;
+  padding: $pad-panel-sm $pad-panel-x;
+  margin-bottom: $gap-md;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $brand-dark;
+}
+
+.errorTitle {
+  font-weight: 700;
+  color: $status-red;
+  margin-bottom: 4px;
+}
+
+.errorAction { color: $brand-dark; }
+
+.errorRef {
+  @include caption;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.notice {
+  border: 1px solid $border;
+  border-left: 4px solid $state-progress;
+  border-radius: $radius-card;
+  background: $brand-light;
+  padding: $pad-panel-sm $pad-panel-x;
+  margin-bottom: $gap-md;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+}
+
+.noticeAttention { border-left-color: $state-attention; }
+.noticeHealthy   { border-left-color: $state-healthy; }
+
+.emptyState {
+  text-align: center;
+  padding: 48px $pad-panel-x;
+  color: $muted;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+}
+
+.emptyTitle {
+  font-family: $font-heading;
+  font-size: $size-section-heading;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+  margin-bottom: 6px;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: $gap-sm;
+  padding: 48px;
+  color: $muted;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+}

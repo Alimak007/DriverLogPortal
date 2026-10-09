@@ -1,0 +1,53 @@
+@import '../../../common/styles/tokens';
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $gap-lg;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: $gap-lg;
+  align-items: start;
+
+  @media (max-width: 960px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.detailPanel {
+  @include panel;
+  position: sticky;
+  top: $gap-md;
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $gap-sm;
+  margin-bottom: $gap-md;
+  flex-wrap: wrap;
+}
+
+.detailGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: $gap-md;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid $border;
+  margin: $gap-md 0;
+}
+
+.detailActions {
+  display: flex;
+  gap: $gap-sm;
+  flex-wrap: wrap;
+  margin-top: $gap-md;
+}

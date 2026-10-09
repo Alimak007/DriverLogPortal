@@ -1,0 +1,148 @@
+@import '../../../common/styles/tokens';
+
+// The unmissable banner. It carries a COUNT and a WORD, and it is the one
+// place in this interface where something is allowed to shout.
+.offerBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $gap-md;
+  flex-wrap: wrap;
+  background: $brand-dark;
+  color: $brand-light;
+  border-radius: $radius-card;
+  padding: $pad-panel-y $pad-panel-x;
+  margin-bottom: $gap-lg;
+
+  @media (max-width: $bp-narrow) {
+    padding: $pad-panel-sm;
+  }
+}
+
+.offerBannerCount {
+  font-family: $font-heading;
+  font-size: 28px;
+  font-weight: $weight-heading;
+  line-height: 1.1;
+}
+
+.offerBannerText {
+  font-family: $font-body;
+  font-size: $size-table-cell;
+}
+
+.offerBannerActions {
+  display: flex;
+  gap: $gap-sm;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+// On the dark banner the secondary button's hover would land on cream, which
+// is correct per the brand rule, so it is used as-is.
+.bannerQuiet {
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $brand-light;
+  opacity: 0.85;
+}
+
+.section { margin-bottom: $gap-lg; }
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: $gap-md;
+}
+
+.offerCard {
+  @include panel;
+  display: flex;
+  flex-direction: column;
+  gap: $gap-sm;
+  border-left: 4px solid $state-attention;
+}
+
+.tripCard {
+  @include panel;
+  display: flex;
+  flex-direction: column;
+  gap: $gap-sm;
+  border-left: 4px solid $state-progress;
+}
+
+.doneCard {
+  @include panel;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 4px solid $state-healthy;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $gap-sm;
+  flex-wrap: wrap;
+}
+
+.route {
+  font-family: $font-body;
+  font-size: $size-section-heading;
+  font-weight: 500;
+  color: $brand-dark;
+  line-height: 1.35;
+}
+
+.routeLeg {
+  display: block;
+  font-size: $size-table-cell;
+  color: $muted;
+}
+
+// The countdown. Figures take the heading face.
+.countdown {
+  font-family: $font-heading;
+  font-weight: $weight-heading;
+  font-size: $size-section-heading;
+  color: $brand-dark;
+}
+
+.countdownUrgent { color: $status-red; }
+
+.cardActions {
+  display: flex;
+  gap: $gap-sm;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.cardActions > button { flex: 1 1 auto; }
+
+.odometerRow {
+  display: flex;
+  gap: $gap-sm;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.odometerField { flex: 1 1 160px; }
+
+.takenNotice {
+  border: 1px solid $border;
+  border-left: 4px solid $status-red;
+  border-radius: $radius-card;
+  background: $white;
+  padding: $pad-panel-sm $pad-panel-x;
+  margin-bottom: $gap-md;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $brand-dark;
+}
+
+.pollNote {
+  @include caption;
+  display: block;
+  margin-top: $gap-md;
+}

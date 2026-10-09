@@ -1,0 +1,19 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-manifest.schema.json",
+  "id": "ddf7cea9-6656-4e8b-b516-1b113d062ebe",
+  "alias": "MyBookingsWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "supportsThemeVariants": false,
+  "preconfiguredEntries": [{
+    "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+    "group": { "default": "Fleet Booking and Dispatch" },
+    "title": { "default": "My Bookings" },
+    "description": { "default": "Your request history, and the status timeline for an active trip." },
+    "officeFabricIconFontName": "Car",
+    "properties": {}
+  }]
+}

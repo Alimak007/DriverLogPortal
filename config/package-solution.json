@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "Fleet Booking and Dispatch Portal",
+    "id": "e537e242-e3bd-45fa-b820-fa31c1cdd8c8",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "AMC Fleet",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.23.2"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Self-service transport booking and automatic dispatch."
+      },
+      "longDescription": {
+        "default": "Phase 1 of the Fleet Booking and Dispatch Portal: a requester books a vehicle in a few taps, the request is broadcast to every eligible driver at once, and the first to accept owns the trip. Includes the driver dashboard, the coordinator dispatch dashboard and operational reports."
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "Fleet Booking and Dispatch Portal",
+        "description": "Deploys the five Fleet Booking and Dispatch web parts.",
+        "id": "b7edba61-9cea-4d67-ab6c-4692154316ec",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/fleet-booking-dispatch.sppkg"
+  }
+}

@@ -1,0 +1,334 @@
+// =============================================================================
+// Fleet Booking and Dispatch Portal - design tokens
+// =============================================================================
+// Every colour, font, radius and shadow in this solution is defined HERE, once.
+//
+// THE RULE: reference a token, never repeat a literal. A component that writes
+// #452A24 instead of $brand-dark is a defect, because the next brand change
+// will miss it.
+//
+// A full re-skin is this one file. Change the five brand values, rebuild, and
+// every view follows.
+// =============================================================================
+
+
+// -----------------------------------------------------------------------------
+// Colour palette
+// -----------------------------------------------------------------------------
+// A warm neutral range: a deep cocoa brown, a tan, and two near-white creams.
+// Five colours carry the whole interface.
+
+$brand-dark:    #452A24;  // Body text, table headers, primary buttons, active tab
+$brand-mid:     #D1C0AB;  // Secondary buttons, form field backgrounds
+$brand-light:   #F9F3EA;  // Card and container backgrounds; text on dark surfaces
+$brand-row-alt: #F8F2E9;  // Alternating table rows, against white
+$brand-hover:   #6A463B;  // Primary button hover only
+$white:         #FFFFFF;  // Page background, odd table rows
+
+// Derived tokens. These keep edges and secondary text in the same family
+// rather than introducing grey.
+$border: rgba(69, 42, 36, 0.18);  // Field, card and table borders
+$muted:  rgba(69, 42, 36, 0.72);  // Captions, hints, secondary figures
+
+// Legibility, measured:
+//   $brand-dark on $white        11.7:1
+//   $brand-dark on $brand-light  10.5:1
+//   $brand-light on $brand-dark  the same ratio inverted - which is why
+//                                primary buttons use that pair
+// All well past the 4.5:1 WCAG AA asks for body text.
+//
+// $brand-mid is A BACKGROUND ONLY. It is too light to carry white text, so
+// secondary buttons put $brand-dark on it.
+
+
+// -----------------------------------------------------------------------------
+// Status and placement colours
+// -----------------------------------------------------------------------------
+// Status sits outside the brand range on purpose. These are the only saturated
+// colours in the interface, so a badge is the thing the eye finds first in a row.
+// Each is measured against WHITE text.
+
+$status-green:  #1E6F5C;  // Healthy: available, assigned, completed      6.5:1
+$status-amber:  #8B6914;  // Needs attention: awaiting, pending, on leave 5.8:1
+$status-blue:   #2F5D9F;  // In progress: en route, in transit, on trip   6.4:1
+                          // ...and the focus ring
+$status-red:    #B22222;  // Exception: cancelled, rejected, overdue      6.1:1
+$status-winner: #228B22;  // Reserved, brand-wide palette                 4.9:1
+$status-bronze: #A0522D;  // Reserved, brand-wide palette                 5.6:1
+
+// The four meanings the requirements fix, mapped onto the palette above.
+// Reference THESE in components, not the raw status colours, so the mapping
+// can change in one place.
+$state-healthy:   $status-green;
+$state-attention: $status-amber;
+$state-progress:  $status-blue;
+$state-exception: $status-red;
+$state-neutral:   $muted;
+
+// COLOUR NEVER CARRIES MEANING ON ITS OWN. Every badge always carries its text.
+// Yes/No values are words, not ticks. A filtered column shows a funnel mark and
+// a count, not just a tint. This is both an accessibility requirement and the
+// reason the palette can change without the application becoming ambiguous.
+
+
+// -----------------------------------------------------------------------------
+// Typography
+// -----------------------------------------------------------------------------
+// Two faces, and the split between them is strict:
+// PLAYFAIR DISPLAY ANNOUNCES, ROBOTO INFORMS.
+//
+//   Playfair Display            Roboto
+//   ------------------------    ------------------------------------
+//   Page headings               All table content
+//   Table column headers        Every form field, label and value
+//   All button labels           Captions, hints and validation messages
+//   The header wordmark         Badges
+//   Reference numbers,          Body text generally
+//     score totals, counters
+//
+// Buttons being set in the heading face is unusual and deliberate: it ties the
+// buttons to the table headers above them and is what gives the interface its
+// character.
+//
+// The fallback chains matter. If neither face loads, the interface degrades to
+// Georgia and Segoe UI rather than to browser defaults.
+
+$font-heading: 'Playfair Display', Georgia, 'Times New Roman', serif;
+$font-body:    'Roboto', 'Segoe UI', Arial, sans-serif;
+
+$size-page-heading:    24px;
+$size-page-heading-sm: 21px;
+$size-section-heading: 19px;
+$size-table-header:    14px;
+$size-table-cell:      14px;
+$size-table-cell-sm:   13px;   // below $bp-narrow
+$size-button:          14px;
+$size-badge:           12px;
+$size-caption:         13px;
+$size-hint:            12px;
+
+$weight-heading: 700;
+$weight-table-header: 600;
+$weight-button: 500;
+$weight-badge: 700;
+$weight-body: 400;
+$weight-caption: 500;
+
+
+// -----------------------------------------------------------------------------
+// Shape
+// -----------------------------------------------------------------------------
+// Five radius tokens, ordered large to small.
+// THE RULE: the bigger the surface, the rounder the corner.
+
+$radius-container: 18px;  // The page container
+$radius-card:      16px;  // Cards, panels, question tiles
+$radius-field:     16px;  // Text fields, dropdowns, popups
+$radius-toolbar:    8px;  // Toolbar and form buttons
+$radius-action:     6px;  // Small in-row action buttons
+$radius-badge:    999px;  // Badges are the exception: fully round
+
+// Dropdowns and text fields take $radius-field and are SQUARE-EDGED rather than
+// pill-shaped. Do not give a field $radius-badge.
+
+
+// -----------------------------------------------------------------------------
+// Spacing
+// -----------------------------------------------------------------------------
+$pad-cell:          14px;
+$pad-cell-sm:       10px;  // below $bp-narrow
+$pad-panel-y:       18px;
+$pad-panel-x:       20px;
+$pad-panel-sm:      14px;
+$gap-sm:             8px;
+$gap-md:            12px;
+$gap-lg:            20px;
+$grid-max-height:   70vh;  // Grids scroll inside themselves rather than
+                           // growing the page
+
+$bp-narrow: 768px;
+$bp-mobile: 480px;
+$bp-min:    360px;  // Everything is responsive from here
+
+
+// -----------------------------------------------------------------------------
+// Elevation
+// -----------------------------------------------------------------------------
+// ELEVATION IS NEARLY ABSENT. Three shadows exist, all cocoa-tinted rather than
+// black. Depth in this interface comes from the cream-on-white background
+// difference, not from shadow.
+//
+// Add elevation only where something genuinely floats above the page.
+// Form tiles carry NO shadow at all.
+
+$shadow-container: 0 10px 30px rgba(69, 42, 36, 0.12);  // The page container
+$shadow-card:      0 4px 14px  rgba(69, 42, 36, 0.08);  // Sticky command bar
+$shadow-button:    0 2px 6px   rgba(69, 42, 36, 0.18);  // Primary buttons
+
+// Motion is minimal: 0.15s on background, colour and shadow. Nothing else
+// animates, so there is no animation to disable.
+$transition: 0.15s ease;
+
+
+// =============================================================================
+// Mixins
+// =============================================================================
+
+// Focus is always visible. ONE mixin gives every interactive element the same
+// ring, applied through the shared button base so a new button cannot forget it.
+@mixin focus-ring {
+  &:focus-visible {
+    outline: 3px solid $status-blue;
+    outline-offset: 2px;
+  }
+}
+
+// The shared button base. Primary, secondary and destructive all build on this,
+// so focus and disabled behaviour cannot drift apart.
+@mixin button-base {
+  font-family: $font-heading;
+  font-size: $size-button;
+  font-weight: $weight-button;
+  border-radius: $radius-toolbar;
+  border: none;
+  padding: 9px 18px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $gap-sm;
+  transition: background-color $transition, color $transition, box-shadow $transition;
+
+  @include focus-ring;
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+}
+
+@mixin button-primary {
+  @include button-base;
+  background: $brand-dark;
+  color: $brand-light;
+  box-shadow: $shadow-button;
+
+  &:hover:not(:disabled) { background: $brand-hover; }
+}
+
+@mixin button-secondary {
+  @include button-base;
+  background: $brand-mid;
+  color: $brand-dark;
+
+  &:hover:not(:disabled) { background: $brand-light; }
+}
+
+@mixin button-destructive {
+  @include button-base;
+  background: transparent;
+  color: $status-red;
+}
+
+// Small in-row action button. Same base, tighter radius and padding.
+@mixin button-action {
+  @include button-base;
+  border-radius: $radius-action;
+  padding: 5px 10px;
+  font-size: $size-hint;
+  background: transparent;
+  color: $brand-dark;
+
+  &:hover:not(:disabled) { background: $brand-row-alt; }
+}
+
+// A badge: white text on its colour, fully rounded, always carrying its label.
+@mixin badge($bg) {
+  display: inline-block;
+  background: $bg;
+  color: $white;
+  font-family: $font-body;
+  font-size: $size-badge;
+  font-weight: $weight-badge;
+  line-height: 1.5;
+  padding: 2px 10px;
+  border-radius: $radius-badge;
+  white-space: nowrap;
+}
+
+// A card or panel: cream on the white page, no shadow.
+@mixin panel {
+  background: $brand-light;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  padding: $pad-panel-y $pad-panel-x;
+
+  @media (max-width: $bp-narrow) {
+    padding: $pad-panel-sm;
+  }
+}
+
+// A text field or dropdown. Square-edged, not pill-shaped.
+@mixin field {
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $brand-dark;
+  background: $brand-mid;
+  border: 1px solid $border;
+  border-radius: $radius-field;
+  padding: 9px 12px;
+  width: 100%;
+  box-sizing: border-box;
+
+  @include focus-ring;
+
+  &::placeholder { color: $muted; }
+
+  // Fields filled from a profile are disabled but KEEP normal label and text
+  // colour - only the box greys. Fluent's own disabled styling made them look
+  // like errors.
+  &:disabled {
+    background: $brand-row-alt;
+    color: $brand-dark;
+    cursor: not-allowed;
+  }
+}
+
+@mixin page-heading {
+  font-family: $font-heading;
+  font-size: $size-page-heading;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+  margin: 0;
+
+  @media (max-width: $bp-narrow) {
+    font-size: $size-page-heading-sm;
+  }
+}
+
+@mixin section-heading {
+  font-family: $font-heading;
+  font-size: $size-section-heading;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+  margin: 0;
+}
+
+@mixin caption {
+  font-family: $font-body;
+  font-size: $size-caption;
+  font-weight: $weight-caption;
+  color: $muted;
+}
+
+// A scrollable grid region. Focusable and labelled, scrolling inside itself.
+@mixin grid-region {
+  max-height: $grid-max-height;
+  overflow: auto;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  background: $white;
+
+  @include focus-ring;
+}

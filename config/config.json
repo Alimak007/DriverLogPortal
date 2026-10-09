@@ -1,0 +1,48 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "book-a-ride-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/bookARide/BookARideWebPart.js",
+          "manifest": "./src/webparts/bookARide/BookARideWebPart.manifest.json"
+        }
+      ]
+    },
+    "my-bookings-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/myBookings/MyBookingsWebPart.js",
+          "manifest": "./src/webparts/myBookings/MyBookingsWebPart.manifest.json"
+        }
+      ]
+    },
+    "driver-dashboard-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/driverDashboard/DriverDashboardWebPart.js",
+          "manifest": "./src/webparts/driverDashboard/DriverDashboardWebPart.manifest.json"
+        }
+      ]
+    },
+    "dispatch-dashboard-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/dispatchDashboard/DispatchDashboardWebPart.js",
+          "manifest": "./src/webparts/dispatchDashboard/DispatchDashboardWebPart.manifest.json"
+        }
+      ]
+    },
+    "reports-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/reports/ReportsWebPart.js",
+          "manifest": "./src/webparts/reports/ReportsWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {}
+}

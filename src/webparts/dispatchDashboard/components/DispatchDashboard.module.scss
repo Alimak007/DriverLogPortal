@@ -1,0 +1,162 @@
+@import '../../../common/styles/tokens';
+
+.section { margin-bottom: $gap-lg; }
+
+// Counters are filter shortcuts, so they wrap onto as many rows as they need
+// rather than scrolling sideways.
+.counterRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: $gap-md;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $gap-md;
+  flex-wrap: wrap;
+  margin-bottom: $gap-md;
+}
+
+.periodRow {
+  display: flex;
+  align-items: center;
+  gap: $gap-sm;
+  flex-wrap: wrap;
+  margin-bottom: $gap-md;
+}
+
+.periodLabel {
+  @include caption;
+}
+
+// Availability panel - two tabs. The active tab is the brand dark, as the
+// brand guideline specifies.
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid $border;
+  margin-bottom: $gap-md;
+}
+
+.tab {
+  @include focus-ring;
+  font-family: $font-heading;
+  font-size: $size-button;
+  font-weight: $weight-button;
+  background: none;
+  border: none;
+  border-radius: $radius-toolbar $radius-toolbar 0 0;
+  padding: 9px 16px;
+  cursor: pointer;
+  color: $brand-dark;
+  transition: background-color $transition, color $transition;
+
+  &:hover { background: $brand-row-alt; }
+}
+
+.tabActive {
+  background: $brand-dark;
+  color: $brand-light;
+
+  &:hover { background: $brand-hover; }
+}
+
+.statusCell {
+  display: flex;
+  align-items: center;
+  gap: $gap-sm;
+  flex-wrap: wrap;
+}
+
+.currentTask {
+  font-size: $size-hint;
+  color: $muted;
+}
+
+// Assignment panel
+.assignPanel {
+  @include panel;
+  margin-bottom: $gap-lg;
+  border-left: 4px solid $state-attention;
+}
+
+.assignHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $gap-md;
+  flex-wrap: wrap;
+  margin-bottom: $gap-md;
+}
+
+.assignGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: $gap-lg;
+}
+
+.choiceList {
+  border: 1px solid $border;
+  border-radius: $radius-field;
+  background: $white;
+  max-height: 260px;
+  overflow: auto;
+  padding: 4px;
+}
+
+.choice {
+  @include focus-ring;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $gap-sm;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $brand-dark;
+  padding: 9px 12px;
+  border-radius: $radius-action;
+  cursor: pointer;
+
+  &:hover { background: $brand-row-alt; }
+}
+
+.choiceSelected {
+  background: $brand-dark;
+  color: $brand-light;
+
+  &:hover { background: $brand-hover; }
+}
+
+.choiceMeta {
+  font-size: $size-hint;
+  color: $muted;
+}
+
+.choiceSelected .choiceMeta { color: $brand-light; }
+
+.escalationNote {
+  margin-top: $gap-md;
+}
+
+.declinedList {
+  list-style: none;
+  margin: $gap-sm 0 0;
+  padding: 0;
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $muted;
+}
+
+.declinedList li { padding: 2px 0; }
+
+.staleNote {
+  @include caption;
+  display: block;
+  margin-top: $gap-md;
+}

@@ -1,0 +1,71 @@
+@import '../../../common/styles/tokens';
+
+.filterBar {
+  @include panel;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: $gap-md;
+  align-items: end;
+  margin-bottom: $gap-lg;
+}
+
+.filterActions {
+  display: flex;
+  gap: $gap-sm;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.reportList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: $gap-sm;
+  margin-bottom: $gap-lg;
+}
+
+.reportButton {
+  @include focus-ring;
+  font-family: $font-heading;
+  font-size: $size-button;
+  font-weight: $weight-button;
+  text-align: left;
+  background: $brand-light;
+  color: $brand-dark;
+  border: 1px solid $border;
+  border-radius: $radius-toolbar;
+  padding: 11px 14px;
+  cursor: pointer;
+  transition: background-color $transition, color $transition;
+
+  &:hover { background: $brand-row-alt; }
+}
+
+.reportButtonActive {
+  background: $brand-dark;
+  color: $brand-light;
+  border-color: $brand-dark;
+
+  &:hover { background: $brand-hover; }
+}
+
+.restrictedMark {
+  display: block;
+  font-family: $font-body;
+  font-size: $size-hint;
+  font-weight: $weight-body;
+  color: $muted;
+  margin-top: 2px;
+}
+
+.reportButtonActive .restrictedMark { color: $brand-light; }
+
+.resultHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $gap-md;
+  flex-wrap: wrap;
+  margin-bottom: $gap-md;
+}
+
+.generated { @include caption; }

@@ -1,0 +1,252 @@
+@import '../../../common/styles/tokens';
+
+.wizard {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+// The step indicator. Carries the step NUMBER and NAME, not just a tint, so
+// progress is never conveyed by colour alone.
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: $gap-lg;
+  flex-wrap: wrap;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $muted;
+}
+
+.stepDot {
+  width: 22px;
+  height: 22px;
+  border-radius: $radius-badge;
+  border: 1px solid $border;
+  background: $white;
+  color: $muted;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: $weight-badge;
+}
+
+.stepCurrent {
+  color: $brand-dark;
+  font-weight: $weight-caption;
+
+  .stepDot {
+    background: $brand-dark;
+    border-color: $brand-dark;
+    color: $brand-light;
+  }
+}
+
+.stepDone {
+  .stepDot {
+    background: $state-healthy;
+    border-color: $state-healthy;
+    color: $white;
+  }
+}
+
+.stepSeparator {
+  color: $border;
+  font-size: $size-hint;
+}
+
+.screen {
+  @include panel;
+  background: $brand-light;
+}
+
+.screenHeading {
+  @include section-heading;
+  margin-bottom: 4px;
+}
+
+.screenCaption {
+  @include caption;
+  display: block;
+  margin-bottom: $gap-lg;
+}
+
+// Searchable destination picker. A picker over Locations, NEVER a text box -
+// the text input filters the list, it does not become the answer.
+.pickerWrap { position: relative; }
+
+.pickerList {
+  margin-top: 6px;
+  border: 1px solid $border;
+  border-radius: $radius-field;
+  background: $white;
+  max-height: 240px;
+  overflow: auto;
+  list-style: none;
+  padding: 4px;
+}
+
+.pickerOption {
+  @include focus-ring;
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $brand-dark;
+  padding: 9px 12px;
+  border-radius: $radius-action;
+  cursor: pointer;
+
+  &:hover { background: $brand-row-alt; }
+}
+
+.pickerOptionSelected {
+  background: $brand-dark;
+  color: $brand-light;
+
+  &:hover { background: $brand-hover; }
+}
+
+.pickerMeta {
+  display: block;
+  font-size: $size-hint;
+  color: $muted;
+}
+
+.pickerOptionSelected .pickerMeta { color: $brand-light; }
+
+.pickerEmpty {
+  padding: 12px;
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $muted;
+}
+
+// Today / Advance
+.toggleRow {
+  display: flex;
+  gap: $gap-sm;
+  margin-bottom: $gap-md;
+}
+
+// Time slots
+.slotGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: $gap-sm;
+  max-height: 260px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.slot {
+  @include focus-ring;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  padding: 9px 4px;
+  border: 1px solid $border;
+  border-radius: $radius-toolbar;
+  background: $white;
+  color: $brand-dark;
+  cursor: pointer;
+  transition: background-color $transition, color $transition;
+
+  &:hover:not(:disabled) { background: $brand-row-alt; }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
+.slotSelected {
+  background: $brand-dark;
+  border-color: $brand-dark;
+  color: $brand-light;
+
+  &:hover:not(:disabled) { background: $brand-hover; }
+}
+
+// Screen 5 - processing
+.processing {
+  text-align: center;
+  padding: 32px $pad-panel-x;
+}
+
+.processingSteps {
+  list-style: none;
+  margin: $gap-lg auto 0;
+  padding: 0;
+  max-width: 340px;
+  text-align: left;
+}
+
+.processingStep {
+  display: flex;
+  align-items: center;
+  gap: $gap-md;
+  padding: 10px 0;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $muted;
+}
+
+.processingStepActive { color: $brand-dark; font-weight: 500; }
+.processingStepDone   { color: $brand-dark; }
+
+.processingMark {
+  width: 20px;
+  height: 20px;
+  border-radius: $radius-badge;
+  border: 2px solid $border;
+  background: $white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: $weight-badge;
+  color: $white;
+  flex: 0 0 auto;
+}
+
+.processingMarkDone {
+  background: $state-healthy;
+  border-color: $state-healthy;
+}
+
+.processingMarkActive {
+  background: $state-progress;
+  border-color: $state-progress;
+}
+
+// Screen 6 - confirmation
+.confirmGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: $gap-md;
+  margin-top: $gap-md;
+}
+
+.summaryList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: $gap-md 0;
+}
+
+.navRow {
+  display: flex;
+  justify-content: space-between;
+  gap: $gap-sm;
+  margin-top: $gap-lg;
+}

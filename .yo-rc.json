@@ -1,0 +1,19 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "useGulp": false,
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "22.14.0",
+    "sdksVersions": {},
+    "version": "1.23.2",
+    "libraryName": "driver-log-portal",
+    "libraryId": "e537e242-e3bd-45fa-b820-fa31c1cdd8c8",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "DriverLogPortal",
+    "solutionShortDescription": "DriverLogPortal description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}
