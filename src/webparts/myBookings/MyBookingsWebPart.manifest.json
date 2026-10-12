@@ -6,14 +6,26 @@
   "version": "*",
   "manifestVersion": 2,
   "requiresCustomScript": false,
-  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
   "supportsThemeVariants": false,
-  "preconfiguredEntries": [{
-    "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
-    "group": { "default": "Fleet Booking and Dispatch" },
-    "title": { "default": "My Bookings" },
-    "description": { "default": "Your request history, and the status timeline for an active trip." },
-    "officeFabricIconFontName": "Car",
-    "properties": {}
-  }]
+  "supportsFullBleed": true,
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Fleet Booking and Dispatch"
+      },
+      "title": {
+        "default": "My Bookings"
+      },
+      "description": {
+        "default": "Your request history, and the status timeline for an active trip."
+      },
+      "officeFabricIconFontName": "Car",
+      "properties": {}
+    }
+  ]
 }

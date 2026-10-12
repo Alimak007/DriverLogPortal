@@ -6,14 +6,26 @@
   "version": "*",
   "manifestVersion": 2,
   "requiresCustomScript": false,
-  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
   "supportsThemeVariants": false,
-  "preconfiguredEntries": [{
-    "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
-    "group": { "default": "Fleet Booking and Dispatch" },
-    "title": { "default": "Fleet Reports" },
-    "description": { "default": "Operational reporting with Excel and CSV export." },
-    "officeFabricIconFontName": "Car",
-    "properties": {}
-  }]
+  "supportsFullBleed": true,
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Fleet Booking and Dispatch"
+      },
+      "title": {
+        "default": "Fleet Reports"
+      },
+      "description": {
+        "default": "Operational reporting with Excel and CSV export."
+      },
+      "officeFabricIconFontName": "Car",
+      "properties": {}
+    }
+  ]
 }
