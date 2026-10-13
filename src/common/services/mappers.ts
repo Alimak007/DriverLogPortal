@@ -16,8 +16,6 @@ import {
   IAllocationRule,
   IAvailabilityBlock,
   IDriver,
-  IDriverPropertyLink,
-  ILocation,
   ILookup,
   INotificationLogEntry,
   IPerson,
@@ -29,7 +27,6 @@ import {
   IVehicle,
   IVehicleType,
   ItemDescription,
-  LocationCategory,
   NotificationOutcome,
   OfferResponseStatus,
   Priority,
@@ -107,25 +104,6 @@ export function toVehicleType(raw: any): IVehicleType {
   };
 }
 
-export const SELECT_LOCATION = [
-  'Id', 'Title', 'Address', 'Latitude', 'Longitude', 'Category', 'IsActive',
-  'Created', 'Modified', 'Property/Id', 'Property/Title',
-];
-export const EXPAND_LOCATION = ['Property'];
-
-export function toLocation(raw: any): ILocation {
-  return {
-    ...base(raw),
-    title: raw.Title ?? '',
-    property: lookup(raw.Property),
-    address: raw.Address ?? undefined,
-    latitude: raw.Latitude ?? undefined,
-    longitude: raw.Longitude ?? undefined,
-    category: (raw.Category ?? undefined) as LocationCategory | undefined,
-    isActive: raw.IsActive !== false,
-  };
-}
-
 export const SELECT_DRIVER = [
   'Id', 'Title', 'DriverID', 'Phone', 'LicenceNumber',
   'LicenceExpiry', 'Status', 'MaxConcurrentTrips', 'IsActive',
@@ -157,6 +135,8 @@ export const SELECT_VEHICLE = [
   'Id', 'Title', 'PlateNo', 'Make', 'Model', 'Colour', 'Capacity', 'VehStatus',
   'Created', 'Modified',
   'VehicleType/Id', 'VehicleType/Title',
+  // The permanent one-to-one pairing. Every eligibility read starts here, so
+  // the driver's id travels with the vehicle.
   'DefaultDriver/Id', 'DefaultDriver/Title',
   // PropertyRef, NOT Property. VehicleMaster.Property still exists as a plain
   // TEXT column used by the legacy logbook - never read or write it.
@@ -179,19 +159,20 @@ export function toVehicle(raw: any): IVehicle {
   };
 }
 
+// Property is deliberately absent: rules are keyed on RequestType alone now,
+// and leaving the lookup in the select would force an expand for a column
+// nothing reads.
 export const SELECT_ALLOCATION_RULE = [
   'Id', 'Title', 'RequestType', 'Mode', 'OfferWindowMinutes',
   'MaxConcurrentTripsPerDriver', 'AdvanceReleaseHours', 'IsActive',
   'NotifyEnRoute', 'NotifyInTransit', 'Created', 'Modified',
-  'Property/Id', 'Property/Title',
+  'OperatingCentreLat', 'OperatingCentreLng', 'OperatingRadiusKm',
 ];
-export const EXPAND_ALLOCATION_RULE = ['Property'];
 
 export function toAllocationRule(raw: any): IAllocationRule {
   return {
     ...base(raw),
     title: raw.Title ?? '',
-    property: lookup(raw.Property),
     requestType: (raw.RequestType ?? 'Staff') as RequestType,
     mode: (raw.Mode ?? 'Automatic') as AllocationMode,
     offerWindowMinutes: raw.OfferWindowMinutes ?? 5,
@@ -200,6 +181,9 @@ export function toAllocationRule(raw: any): IAllocationRule {
     isActive: raw.IsActive !== false,
     notifyEnRoute: raw.NotifyEnRoute !== false,
     notifyInTransit: raw.NotifyInTransit !== false,
+    operatingCentreLat: raw.OperatingCentreLat ?? undefined,
+    operatingCentreLng: raw.OperatingCentreLng ?? undefined,
+    operatingRadiusKm: raw.OperatingRadiusKm ?? undefined,
   };
 }
 
@@ -225,22 +209,6 @@ export function toAvailabilityBlock(raw: any): IAvailabilityBlock {
   };
 }
 
-export const SELECT_DL_CLIENT = [
-  'Id', 'Created', 'Modified',
-  'DriverID/Id', 'DriverID/Title',
-  'PropertyRef/Id', 'PropertyRef/Title',
-];
-export const EXPAND_DL_CLIENT = ['DriverID', 'PropertyRef'];
-
-/** DLClientMaster uses DriverID and PropertyRef, not Driver and Property. */
-export function toDriverPropertyLink(raw: any): IDriverPropertyLink {
-  return {
-    ...base(raw),
-    driver: lookup(raw.DriverID),
-    property: lookup(raw.PropertyRef),
-  };
-}
-
 // -----------------------------------------------------------------------------
 // Dispatch
 // -----------------------------------------------------------------------------
@@ -251,16 +219,18 @@ export const SELECT_REQUEST = [
   'ReturnDateTime', 'NoOfPax', 'OtherVehicleText', 'ItemDescription',
   'ItemNotes', 'Priority', 'ReqStatus', 'OfferClosesAt', 'ReleaseAt', 'Remarks',
   'RejectionReason', 'CancellationReason', 'Created', 'Modified',
+  // Free coordinates, not lookups. Dropping the two location lookups also took
+  // this list from 8 of SharePoint's 12 lookup-and-person columns per view
+  // down to 6.
+  'PickupText', 'PickupPlaceId', 'PickupLat', 'PickupLng', 'PickupNotes',
+  'DropOffText', 'DropOffPlaceId', 'DropOffLat', 'DropOffLng', 'DropOffNotes',
   'Requester/Id', 'Requester/Title', 'Requester/EMail',
   'Property/Id', 'Property/Title',
-  'PickupLocation/Id', 'PickupLocation/Title',
-  'DropOffLocation/Id', 'DropOffLocation/Title',
   'VehicleTypeRequested/Id', 'VehicleTypeRequested/Title',
   'AcceptedTrip/Id', 'AcceptedTrip/Title',
 ];
 export const EXPAND_REQUEST = [
-  'Requester', 'Property', 'PickupLocation', 'DropOffLocation',
-  'VehicleTypeRequested', 'AcceptedTrip',
+  'Requester', 'Property', 'VehicleTypeRequested', 'AcceptedTrip',
 ];
 
 export function toRequest(raw: any): ITransportRequest {
@@ -270,8 +240,19 @@ export function toRequest(raw: any): ITransportRequest {
     requestType: (raw.RequestType ?? 'Staff') as RequestType,
     requester: person(raw.Requester),
     property: lookup(raw.Property),
-    pickupLocation: lookup(raw.PickupLocation),
-    dropOffLocation: lookup(raw.DropOffLocation),
+
+    pickupText: raw.PickupText ?? '',
+    pickupPlaceId: raw.PickupPlaceId ?? undefined,
+    pickupLat: raw.PickupLat ?? undefined,
+    pickupLng: raw.PickupLng ?? undefined,
+    pickupNotes: raw.PickupNotes ?? undefined,
+
+    dropOffText: raw.DropOffText ?? '',
+    dropOffPlaceId: raw.DropOffPlaceId ?? undefined,
+    dropOffLat: raw.DropOffLat ?? undefined,
+    dropOffLng: raw.DropOffLng ?? undefined,
+    dropOffNotes: raw.DropOffNotes ?? undefined,
+
     requiredDateTime: parseDate(raw.RequiredDateTime) ?? new Date(0),
     returnDateTime: parseDate(raw.ReturnDateTime),
     noOfPax: raw.NoOfPax ?? undefined,

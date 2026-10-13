@@ -449,8 +449,8 @@ export const DriverDashboard: React.FC<IDriverDashboardProps> = ({
                       <Badge state="healthy" label="Completed" />
                     </div>
                     <div className={styles.route}>
-                      {card.dropOffName}
-                      <span className={styles.routeLeg}>from {card.pickupName}</span>
+                      {card.request.dropOffText}
+                      <span className={styles.routeLeg}>from {card.request.pickupText}</span>
                     </div>
                     <FieldRow label="Finished">
                       {formatTime(card.trip.actualDropTime)}
@@ -548,8 +548,8 @@ function OfferCardView({ card, busy, onAccept, onReject }: {
       </div>
 
       <div className={styles.route}>
-        {card.dropOffName}
-        <span className={styles.routeLeg}>from {card.pickupName}</span>
+        {card.request.dropOffText}
+        <span className={styles.routeLeg}>from {card.request.pickupText}</span>
       </div>
 
       <FieldRow label="When">{formatDateTime(card.request.requiredDateTime)}</FieldRow>
@@ -600,8 +600,8 @@ function TripCardView({ card, busy, odometer, onOdometer, onAdvance, onCancel }:
       </div>
 
       <div className={styles.route}>
-        {card.dropOffName}
-        <span className={styles.routeLeg}>from {card.pickupName}</span>
+        {card.request.dropOffText}
+        <span className={styles.routeLeg}>from {card.request.pickupText}</span>
       </div>
 
       <FieldRow label="When">{formatDateTime(card.request.requiredDateTime)}</FieldRow>

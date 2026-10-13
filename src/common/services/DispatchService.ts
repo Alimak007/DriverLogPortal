@@ -38,10 +38,12 @@ import {
   TripStatus,
 } from '../models';
 import {
-  explainDriverIneligibility,
-  freeVehicles,
-  isDriverEligible,
+  distanceKm,
+  eligiblePairs,
+  explainPairIneligibility,
+  IEligibilityContext,
   isLegalTransition,
+  isOutsideOperatingArea,
 } from '../rules/dispatchRules';
 import { formatRequestRef, formatTripRef } from '../rules/identifiers';
 import { OPEN_TRIP_STATUSES, PENDING_STATUSES } from '../rules/statusTransitions';
@@ -64,7 +66,6 @@ import {
   toRequest,
   toTrip,
   toVehicle,
-  EXPAND_ALLOCATION_RULE,
   EXPAND_BLOCK,
   SELECT_ALLOCATION_RULE,
   SELECT_BLOCK,
@@ -138,9 +139,22 @@ export function mapWriteError<T = void>(e: unknown, listName: string): DispatchR
 
 export interface INewRequestInput {
   requestType: RequestType;
-  propertyId: number;
-  pickupLocationId: number;
-  dropOffLocationId: number;
+  /** Reporting label only. Allocation ignores it. */
+  propertyId?: number;
+
+  // Free coordinates from the map search, not a list lookup.
+  pickupText: string;
+  pickupPlaceId?: string;
+  pickupLat: number;
+  pickupLng: number;
+  pickupNotes?: string;
+
+  dropOffText: string;
+  dropOffPlaceId?: string;
+  dropOffLat: number;
+  dropOffLng: number;
+  dropOffNotes?: string;
+
   requiredDateTime: Date;
   returnDateTime?: Date;
   noOfPax?: number;
@@ -162,15 +176,26 @@ export interface IEffectiveRule {
   maxConcurrentTripsPerDriver: number;
   advanceReleaseHours: number;
   mode: 'Automatic' | 'Manual';
+  /** The operating area. Replaces property scoping. */
+  operatingCentreLat: number;
+  operatingCentreLng: number;
+  operatingRadiusKm: number;
 }
 
 const RULE_DEFAULTS: IEffectiveRule = {
   // 15, not 5: the offer e-mail is sent by a flow and may take minutes to
   // arrive, so the window has to outlast the delay.
   offerWindowMinutes: 15,
+  // 1, and changing it is not safe yet - see the cap note in dispatchRules.ts.
   maxConcurrentTripsPerDriver: 1,
   advanceReleaseHours: 4,
   mode: 'Automatic',
+  // Abu Dhabi. OPEN QUESTION: the 60 km radius is a starting figure the
+  // business has not confirmed. It is read from AllocationRules, never
+  // hard-coded into a decision.
+  operatingCentreLat: 24.4539,
+  operatingCentreLng: 54.3773,
+  operatingRadiusKm: 60,
 };
 
 export interface IDispatchService {
@@ -193,9 +218,9 @@ export interface IDispatchService {
   setEta(tripItemId: number, etaMinutes: number): Promise<DispatchResult>;
 
   // Reads behind the Coordinator's screens.
-  getSnapshot(propertyIds: number[], completedFrom: Date, completedTo: Date): Promise<IDispatchSnapshot>;
+  getSnapshot(completedFrom: Date, completedTo: Date): Promise<IDispatchSnapshot>;
   getOffersForRequest(requestItemId: number): Promise<IRideOffer[]>;
-  getTripsInRange(propertyIds: number[], from: Date, to: Date): Promise<ITripAssignment[]>;
+  getTripsInRange(from: Date, to: Date): Promise<ITripAssignment[]>;
 }
 
 // -----------------------------------------------------------------------------
@@ -234,16 +259,13 @@ export class DispatchService implements IDispatchService {
     input: INewRequestInput,
   ): Promise<DispatchResult<{ id: number; ref: string }>> {
     try {
-      // A request with no property can never be allocated: every eligibility
-      // read filters on it. Refuse to create one rather than leaving a booking
-      // that silently escalates for ever.
-      if (!input.propertyId) {
-        return fail(
-          'UNKNOWN',
-          'This booking has no property, so no driver could be found for it. ' +
-            'Choose a pickup point that belongs to a property, or ask a Fleet ' +
-            'Admin to set the Property column on the Locations list.',
-        );
+      // Coordinates are what the engine runs on now, so a booking without them
+      // can never be matched or shown on a map. Refuse rather than create one.
+      if (!input.pickupText || input.pickupLat === undefined || input.pickupLng === undefined) {
+        return fail('UNKNOWN', 'Choose a pickup point on the map before booking.');
+      }
+      if (!input.dropOffText || input.dropOffLat === undefined || input.dropOffLng === undefined) {
+        return fail('UNKNOWN', 'Choose a destination on the map before booking.');
       }
       if (!input.vehicleTypeId) {
         return fail('UNKNOWN', 'This booking has no vehicle type.');
@@ -255,9 +277,19 @@ export class DispatchService implements IDispatchService {
       const payload: Record<string, unknown> = {
         Title: 'NEW',
         RequestType: input.requestType,
-        PropertyId: input.propertyId,
-        PickupLocationId: input.pickupLocationId,
-        DropOffLocationId: input.dropOffLocationId,
+
+        PickupText: input.pickupText,
+        PickupPlaceId: input.pickupPlaceId,
+        PickupLat: input.pickupLat,
+        PickupLng: input.pickupLng,
+        PickupNotes: input.pickupNotes,
+
+        DropOffText: input.dropOffText,
+        DropOffPlaceId: input.dropOffPlaceId,
+        DropOffLat: input.dropOffLat,
+        DropOffLng: input.dropOffLng,
+        DropOffNotes: input.dropOffNotes,
+
         RequiredDateTime: toIso(input.requiredDateTime),
         ReturnDateTime: toIso(input.returnDateTime),
         VehicleTypeRequestedId: input.vehicleTypeId,
@@ -265,6 +297,9 @@ export class DispatchService implements IDispatchService {
         ReqStatus: REQUEST_STATUS.Submitted,
         RequesterId: this.ctx.pageContext.legacyPageContext.userId,
       };
+      // Property is a reporting label now, not a filter. Written when we have
+      // it, absent when we do not; nothing downstream depends on it.
+      if (input.propertyId) payload.PropertyId = input.propertyId;
       if (input.noOfPax !== undefined) payload.NoOfPax = input.noOfPax;
       if (input.otherVehicleText) payload.OtherVehicleText = input.otherVehicleText;
       if (input.itemDescription) payload.ItemDescription = input.itemDescription;
@@ -280,7 +315,7 @@ export class DispatchService implements IDispatchService {
       const ref = formatRequestRef(itemId);
       await list.items.getById(itemId).update({ Title: ref });
 
-      const rule = await this.getEffectiveRule(input.propertyId, input.requestType);
+      const rule = await this.getEffectiveRule(input.requestType);
 
       // Advance booking: hold it. A booking three weeks out would otherwise sit
       // in drivers' dashboards for weeks. A flow releases it back to Submitted.
@@ -338,27 +373,68 @@ export class DispatchService implements IDispatchService {
         .expand(...EXPAND_REQUEST)();
       const request = toRequest(raw);
 
-      const propertyId = request.property?.id;
       const typeId = request.vehicleTypeRequested?.id;
-      if (propertyId === undefined || typeId === undefined) {
-        return fail('UNKNOWN', 'This request has no property or vehicle type, so it cannot be allocated.');
+      if (typeId === undefined) {
+        return fail('UNKNOWN', 'This request has no vehicle type, so it cannot be allocated.');
       }
 
-      const rule = await this.getEffectiveRule(propertyId, request.requestType);
+      const rule = await this.getEffectiveRule(request.requestType);
+      const requestList = sp.web.lists.getByTitle(LIST.transportRequests);
+
+      // ---------------------------------------------------------------------
+      // The distance check. This is what replaced property scoping: without it
+      // a requester can drop a pin in Dubai and the engine will offer the trip
+      // to a driver 140 km away.
+      // ---------------------------------------------------------------------
+      const area = {
+        centreLat: rule.operatingCentreLat,
+        centreLng: rule.operatingCentreLng,
+        radiusKm: rule.operatingRadiusKm,
+      };
+      if (isOutsideOperatingArea(request.pickupLat, request.pickupLng, area)) {
+        const km = Math.round(
+          distanceKm(
+            request.pickupLat as number,
+            request.pickupLng as number,
+            area.centreLat,
+            area.centreLng,
+          ),
+        );
+        await requestList.items.getById(requestItemId).update({
+          ReqStatus: REQUEST_STATUS.AwaitingCoordinator,
+        });
+        // OfferClosesAt is deliberately left null. Flow 4B reads that as "this
+        // never went out to anybody" rather than "the window ran out".
+        await this.writeRequestNote(
+          requestItemId,
+          `Pickup is ${km} km from the operating area. Needs manual assignment.`,
+        );
+        console.warn(
+          `[FleetPortal] ${request.requestId} not broadcast: pickup is ${km} km ` +
+            `from the operating centre (limit ${area.radiusKm} km).`,
+        );
+        return ok({ offerCount: 0 });
+      }
 
       const windowFrom = request.requiredDateTime;
       const windowTo = request.returnDateTime
         ? request.returnDateTime
         : new Date(windowFrom.getTime() + 2 * 3600000);
 
-      // Four reads. Never a loop of single-item fetches.
-      const [links, blocks, openTrips, drivers] = await Promise.all([
+      // ---------------------------------------------------------------------
+      // Four reads. START FROM THE VEHICLE: it carries the type and it carries
+      // its permanent driver, so one filtered query gets the candidate set.
+      // ---------------------------------------------------------------------
+      const [vehicleRows, blockRows, tripRows, driverRows] = await Promise.all([
         sp.web.lists
-          .getByTitle(LIST.dlClientMaster)
-          .items.select('Id', 'DriverID/Id', 'PropertyRef/Id')
-          .expand('DriverID', 'PropertyRef')
-          .filter(`PropertyRef/Id eq ${propertyId}`)
-          .top(2000)(),
+          .getByTitle(LIST.vehicleMaster)
+          .items.select(...SELECT_VEHICLE)
+          .expand(...EXPAND_VEHICLE)
+          .filter(
+            `VehicleType/Id eq ${typeId} and IsActive eq 1 ` +
+              `and VehStatus ne 'Retired' and VehStatus ne 'Under Maintenance'`,
+          )
+          .top(500)(),
         sp.web.lists
           .getByTitle(LIST.availabilityBlocks)
           .items.select(...SELECT_BLOCK)
@@ -381,55 +457,34 @@ export class DispatchService implements IDispatchService {
           .top(500)(),
       ]);
 
-      const allocatedDriverIds = new Set<number>(
-        (links as any[])
-          .map((l) => l.DriverID?.Id)
-          .filter((id): id is number => typeof id === 'number'),
-      );
-      const blockList = (blocks as any[]).map(toAvailabilityBlock);
-      const tripList = (openTrips as any[]).map(toTrip);
-      const driverList = (drivers as any[]).map(toDriver);
+      const vehicles = (vehicleRows as any[]).map(toVehicle);
+      const blockList = (blockRows as any[]).map(toAvailabilityBlock);
+      const tripList = (tripRows as any[]).map(toTrip);
+      const driverList = (driverRows as any[]).map(toDriver);
 
-      const eligible = driverList.filter((d) =>
-        isDriverEligible(d, {
-          allocatedDriverIds,
-          vehicleTypeId: typeId,
-          windowTo,
-          blocks: blockList,
-          openTrips: tripList,
-          ruleMaxConcurrent: rule.maxConcurrentTripsPerDriver,
-        }),
-      );
+      const driversById = new Map<number, IDriver>();
+      driverList.forEach((d) => driversById.set(d.id, d));
 
-      const vehicles = await this.readCandidateVehicles(typeId, propertyId);
-      const free = freeVehicles(vehicles, tripList, blockList);
+      const ctx: IEligibilityContext = {
+        driversById,
+        blocks: blockList,
+        openTrips: tripList,
+        windowTo,
+        ruleMaxConcurrent: rule.maxConcurrentTripsPerDriver,
+      };
 
-      const requestList = sp.web.lists.getByTitle(LIST.transportRequests);
+      const pairs = eligiblePairs(vehicles, ctx);
 
-      if (eligible.length === 0 || free.length === 0) {
-        // Escalation is a legitimate outcome, but escalating SILENTLY is not.
-        // "No eligible drivers" is useless on its own; the per-driver reasons
-        // point straight at the data that caused it.
-        const ctx = {
-          allocatedDriverIds,
-          vehicleTypeId: typeId,
-          windowTo,
-          blocks: blockList,
-          openTrips: tripList,
-          ruleMaxConcurrent: rule.maxConcurrentTripsPerDriver,
-        };
+      if (pairs.length === 0) {
+        // Escalation is a legitimate outcome; escalating SILENTLY is not.
         const report: string[] = [
           `[FleetPortal] ${request.requestId} escalated to the Coordinator.`,
-          `  property=${propertyId} vehicleType=${typeId}`,
+          `  vehicleType=${typeId}`,
           `  window ${toIso(windowFrom)} -> ${toIso(windowTo)}`,
-          `  DLClientMaster rows for this property: ${links.length}`,
-          `  allocated driver ids: ${Array.from(allocatedDriverIds).join(', ') || 'NONE'}`,
-          `  drivers read: ${driverList.length}, eligible: ${eligible.length}`,
-          `  vehicles of this type at this property: ${vehicles.length}, free: ${free.length}`,
+          `  vehicles of this type: ${vehicles.length}, active drivers: ${driverList.length}`,
         ];
-        driverList.forEach((d) => {
-          const reasons = explainDriverIneligibility(d, ctx).join('; ');
-          report.push(`  - ${d.driverName} (id ${d.id}): ${reasons || 'ELIGIBLE'}`);
+        vehicles.forEach((v) => {
+          report.push(`  - ${v.plateNo}: ${explainPairIneligibility(v, ctx).join('; ')}`);
         });
         console.warn(report.join(String.fromCharCode(10)));
 
@@ -441,8 +496,8 @@ export class DispatchService implements IDispatchService {
       }
 
       // Status BEFORE the offers. A driver who sees a card while the request
-      // still reads Submitted is rejected by the guard in acceptOffer and has no
-      // idea why.
+      // still reads Submitted is rejected by the guard in acceptOffer and has
+      // no idea why.
       await requestList.items.getById(requestItemId).update({
         ReqStatus: REQUEST_STATUS.Broadcasting,
         OfferClosesAt: toIso(new Date(Date.now() + rule.offerWindowMinutes * 60000)),
@@ -452,25 +507,47 @@ export class DispatchService implements IDispatchService {
       const [batched, execute] = sp.batched();
       const offerList = batched.web.lists.getByTitle(LIST.rideOffers);
 
-      eligible.forEach((d) => {
+      pairs.forEach((pair) => {
         offerList.items
           .add({
-            // Spec format: FB-0042-D017. Readable without expanding lookups.
-          Title: `${request.requestId}-D${pad3(d.id)}`,
+            Title: `${request.requestId}-D${pad3(pair.driver.id)}`,
             RequestId: requestItemId,
-            DriverId: d.id,
+            DriverId: pair.driver.id,
+            // THE VEHICLE IS BOUND HERE NOW, not at claim time. The pairing is
+            // permanent, so there is nothing left to choose when a driver
+            // accepts - acceptOffer just reads it back off the offer.
+            VehicleId: pair.vehicle.id,
             OfferedOn: offeredOn,
             ResponseStatus: OFFER_STATUS.Pending,
-            // Vehicle deliberately left empty - bound at claim time.
           })
           .catch(() => undefined);
       });
       await execute();
 
-      return ok({ offerCount: eligible.length });
-  
+      return ok({ offerCount: pairs.length });
     } catch (e) {
       return mapWriteError(e, 'RideOffers');
+    }
+  }
+
+  /**
+   * An audit line against a request that has no trip yet.
+   *
+   * TripStatusHistory is keyed on Trip, so a request that never reached a trip
+   * cannot have a row there. The note goes on the request's Remarks instead,
+   * appended rather than overwritten.
+   */
+  private async writeRequestNote(requestItemId: number, note: string): Promise<void> {
+    try {
+      const list = getSP().web.lists.getByTitle(LIST.transportRequests);
+      const raw: any = await list.items.getById(requestItemId).select('Id', 'Remarks')();
+      const existing: string = raw.Remarks ?? '';
+      await list.items.getById(requestItemId).update({
+        Remarks: existing ? `${existing}${String.fromCharCode(10)}${note}` : note,
+      });
+    } catch (e) {
+      // A missing audit line must not fail the escalation it describes.
+      console.error('[FleetPortal] could not write the request note', e);
     }
   }
 
@@ -591,15 +668,16 @@ export class DispatchService implements IDispatchService {
         return fail('TAKEN', 'Taken by another driver');
       }
 
-      // 4. Bind a vehicle, re-verifying availability in this same read.
-      const propertyId: number | undefined = requestItem.PropertyId;
-      const typeId: number | undefined = requestItem.VehicleTypeRequestedId;
-      if (propertyId === undefined || typeId === undefined) {
-        return fail('UNKNOWN', 'This request has no property or vehicle type.');
-      }
-      const vehicleId = await this.pickFreeVehicle(typeId, propertyId, driverId);
+      // 4. The vehicle came WITH the offer. There is nothing to choose: the
+      //    driver owns one vehicle permanently, and broadcast() wrote it onto
+      //    every RideOffers row. pickFreeVehicle() is gone with the pool.
+      const vehicleId = offer.vehicle?.id;
       if (vehicleId === undefined) {
-        return fail('NO_VEHICLE', 'No vehicle is available for this trip');
+        return fail(
+          'NO_VEHICLE',
+          'This offer has no vehicle on it, so the trip cannot be assigned. ' +
+            'Ask a Fleet Admin to check the driver has a vehicle in VehicleMaster.',
+        );
       }
 
       // 5. THE LOCK. Applies only if nobody has touched the item since step 2.
@@ -1120,7 +1198,6 @@ export class DispatchService implements IDispatchService {
   // ===========================================================================
 
   public async getSnapshot(
-    propertyIds: number[],
     completedFrom: Date,
     completedTo: Date,
   ): Promise<IDispatchSnapshot> {
@@ -1137,8 +1214,9 @@ export class DispatchService implements IDispatchService {
         let driverRows: any[] = [];
         let vehicleRows: any[] = [];
 
+        // No property filter. One pool, one dashboard - the Coordinator
+        // narrows the view with a control if they want to.
         const requestFilter = and(
-          orFilter('Property/Id', propertyIds),
           `(${orFilter('ReqStatus', [...PENDING_STATUSES, REQUEST_STATUS.Allocated])}) or ` +
             `(ReqStatus eq '${REQUEST_STATUS.Completed}' and Modified ge '${toIso(completedFrom)}' ` +
             `and Modified lt '${toIso(completedTo)}')`,
@@ -1172,7 +1250,7 @@ export class DispatchService implements IDispatchService {
           .getByTitle(LIST.driversMaster)
           .items.select(...SELECT_DRIVER)
           .expand(...EXPAND_DRIVER)
-          .filter(and('IsActive eq 1', orFilter('HomeProperty/Id', propertyIds)))
+          .filter('IsActive eq 1')
           .orderBy('Title', true)
           .top(500)()
           .then((r: any[]) => { driverRows = r; })
@@ -1182,7 +1260,7 @@ export class DispatchService implements IDispatchService {
           .getByTitle(LIST.vehicleMaster)
           .items.select(...SELECT_VEHICLE)
           .expand(...EXPAND_VEHICLE)
-          .filter(and("VehStatus ne 'Retired'", orFilter('PropertyRef/Id', propertyIds)))
+          .filter("VehStatus ne 'Retired'")
           .orderBy('PlateNo', true)
           .top(500)()
           .then((r: any[]) => { vehicleRows = r; })
@@ -1205,8 +1283,6 @@ export class DispatchService implements IDispatchService {
             return {
               trip,
               request: request as ITransportRequest,
-              pickupName: request?.pickupLocation?.title ?? '',
-              dropOffName: request?.dropOffLocation?.title ?? '',
               requesterName: request?.requester?.title ?? '',
               vehiclePlate: trip.vehicle?.title ?? '',
             };
@@ -1290,11 +1366,7 @@ export class DispatchService implements IDispatchService {
     );
   }
 
-  public async getTripsInRange(
-    propertyIds: number[],
-    from: Date,
-    to: Date,
-  ): Promise<ITripAssignment[]> {
+  public async getTripsInRange(from: Date, to: Date): Promise<ITripAssignment[]> {
     return guard(
       'Trips for that period could not be loaded.',
       'Narrow the date range and try again.',
@@ -1315,21 +1387,29 @@ export class DispatchService implements IDispatchService {
   // Internals
   // ===========================================================================
 
-  private async getEffectiveRule(
-    propertyId: number,
-    requestType: RequestType,
-  ): Promise<IEffectiveRule> {
+  /**
+   * The rule in force for this request type.
+   *
+   * Rules used to be keyed on Property + RequestType. With property scoping
+   * gone there is one active rule per request type, and Property is left empty
+   * on each row.
+   */
+  private async getEffectiveRule(requestType: RequestType): Promise<IEffectiveRule> {
     try {
       const rows: any[] = await getSP()
         .web.lists.getByTitle(LIST.allocationRules)
         .items.select(...SELECT_ALLOCATION_RULE)
-        .expand(...EXPAND_ALLOCATION_RULE)
-        .filter(
-          `Property/Id eq ${propertyId} and RequestType eq '${requestType}' and IsActive eq 1`,
-        )
+        .filter(`RequestType eq '${requestType}' and IsActive eq 1`)
         .top(1)();
 
-      if (rows.length === 0) return { ...RULE_DEFAULTS };
+      if (rows.length === 0) {
+        console.warn(
+          `[FleetPortal] no active AllocationRules row for '${requestType}'. ` +
+            'Using defaults: window 15, cap 1, advance release 4, Automatic, radius 60 km.',
+        );
+        return { ...RULE_DEFAULTS };
+      }
+
       const rule: IAllocationRule = toAllocationRule(rows[0]);
       return {
         offerWindowMinutes: rule.offerWindowMinutes || RULE_DEFAULTS.offerWindowMinutes,
@@ -1337,64 +1417,15 @@ export class DispatchService implements IDispatchService {
           rule.maxConcurrentTripsPerDriver || RULE_DEFAULTS.maxConcurrentTripsPerDriver,
         advanceReleaseHours: rule.advanceReleaseHours || RULE_DEFAULTS.advanceReleaseHours,
         mode: rule.mode,
+        operatingCentreLat: rule.operatingCentreLat ?? RULE_DEFAULTS.operatingCentreLat,
+        operatingCentreLng: rule.operatingCentreLng ?? RULE_DEFAULTS.operatingCentreLng,
+        operatingRadiusKm: rule.operatingRadiusKm || RULE_DEFAULTS.operatingRadiusKm,
       };
     } catch {
-      // A missing or misnamed rules list must not stop a booking. The
-      // documented defaults apply.
+      // A missing or misnamed rules list must not stop a booking.
       console.warn('[FleetPortal] AllocationRules could not be read; using defaults.');
       return { ...RULE_DEFAULTS };
     }
-  }
-
-  private async readCandidateVehicles(typeId: number, propertyId: number): Promise<IVehicle[]> {
-    const rows: any[] = await getSP()
-      .web.lists.getByTitle(LIST.vehicleMaster)
-      .items.select(...SELECT_VEHICLE)
-      .expand(...EXPAND_VEHICLE)
-      .filter(
-        `VehicleType/Id eq ${typeId} and PropertyRef/Id eq ${propertyId} ` +
-          `and VehStatus ne 'Retired' and VehStatus ne 'Under Maintenance'`,
-      )
-      .top(200)();
-    return rows.map(toVehicle);
-  }
-
-  /**
-   * Prefer this driver's default vehicle if it is free, otherwise the first
-   * free vehicle of the right type.
-   */
-  private async pickFreeVehicle(
-    typeId: number,
-    propertyId: number,
-    driverId: number,
-  ): Promise<number | undefined> {
-    const sp = getSP();
-    const [vehicles, tripRows, blockRows] = await Promise.all([
-      this.readCandidateVehicles(typeId, propertyId),
-      sp.web.lists
-        .getByTitle(LIST.tripAssignments)
-        .items.select(...SELECT_TRIP)
-        .expand(...EXPAND_TRIP)
-        .filter(orFilter('TripStatus', OPEN_TRIP_STATUSES))
-        .top(500)(),
-      sp.web.lists
-        .getByTitle(LIST.availabilityBlocks)
-        .items.select(...SELECT_BLOCK)
-        .expand(...EXPAND_BLOCK)
-        .filter(`FromDateTime lt '${toIso(new Date(Date.now() + 86400000))}' ` +
-                `and ToDateTime gt '${toIso(new Date())}'`)
-        .top(500)(),
-    ]);
-
-    const free = freeVehicles(
-      vehicles,
-      (tripRows as any[]).map(toTrip),
-      (blockRows as any[]).map(toAvailabilityBlock),
-    );
-    if (free.length === 0) return undefined;
-
-    const preferred = free.filter((v) => v.defaultDriver?.id === driverId);
-    return (preferred.length > 0 ? preferred[0] : free[0]).id;
   }
 
   private async setPendingOffers(requestItemId: number, to: string): Promise<void> {

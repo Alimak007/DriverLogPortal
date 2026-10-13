@@ -1137,3 +1137,242 @@ $tap: 46px;              // The height of every primary action
   font-size: $size-caption;
   color: $muted;
 }
+
+// =============================================================================
+// The map picker
+// =============================================================================
+// Destinations are no longer a list: the requester searches TomTom live and
+// drops a pin anywhere in the UAE.
+
+.mapPicker {
+  display: flex;
+  flex-direction: column;
+  gap: $gap-md;
+}
+
+.mapPane {
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  overflow: hidden;
+  background: $brand-mid;
+  position: relative;
+}
+
+// A fixed height, because a Leaflet container with no height renders nothing.
+// On a narrow screen the map sits above the fields rather than beside them.
+.mapCanvas {
+  width: 100%;
+  height: 320px;
+
+  @media (max-width: $bp-narrow) {
+    height: 220px;
+  }
+}
+
+.mapFallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: $gap-lg;
+  background: $brand-mid;
+  font-family: $font-body;
+  font-size: $size-caption;
+  color: $muted;
+}
+
+.mapHint {
+  margin: 0;
+  padding: 8px 12px;
+  background: $brand-light;
+  border-top: 1px solid $border;
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $muted;
+}
+
+// Leaflet writes this class onto the marker element itself, outside any CSS
+// module, so it has to be global. Passing our own className already drops
+// Leaflet's `leaflet-div-icon`; this is belt and braces against the white box.
+:global(.fleet-pin) {
+  background: none;
+  border: none;
+}
+
+.placeFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: $gap-md;
+}
+
+.placeField {
+  position: relative;
+  min-width: 0;
+}
+
+.placeInputWrap { position: relative; }
+
+.placeSpinner {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border: 2px solid $border;
+  border-top-color: $brand-dark;
+  border-radius: $radius-badge;
+  animation: placeSpin 0.7s linear infinite;
+}
+
+@keyframes placeSpin {
+  to { transform: rotate(360deg); }
+}
+
+.placeChosen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 $gap-sm;
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $brand-dark;
+
+  span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+}
+
+.placeClear {
+  @include focus-ring;
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: $font-body;
+  font-size: $size-hint;
+  font-weight: 600;
+  color: $brand-dark;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.placeList {
+  list-style: none;
+  margin: 4px 0 $gap-sm;
+  padding: 4px;
+  border: 1px solid $border;
+  border-radius: $radius-field;
+  background: $white;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.placeOption {
+  @include focus-ring;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 9px 10px;
+  border-radius: $radius-action;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $brand-dark;
+  cursor: pointer;
+
+  &:hover { background: $brand-tint; }
+
+  span { min-width: 0; overflow-wrap: anywhere; }
+}
+
+.placeEmpty {
+  padding: 10px;
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $muted;
+}
+
+// =============================================================================
+// The route map
+// =============================================================================
+// Shown on the confirmation and tracking screens. Two pins and a line - see the
+// note at the top of RouteMap.tsx for why there is no vehicle on it.
+
+.routeMapCard {
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  overflow: hidden;
+  margin-bottom: $gap-md;
+}
+
+.routeMapHeading {
+  margin: 0;
+  padding: 12px 14px 10px;
+  font-family: $font-heading;
+  font-size: 15px;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+}
+
+.routeMapPane {
+  position: relative;
+  border-top: 1px solid $border;
+  border-bottom: 1px solid $border;
+  background: $brand-mid;
+}
+
+.routeMapCanvas {
+  width: 100%;
+  height: 240px;
+
+  @media (max-width: $bp-narrow) {
+    height: 190px;
+  }
+}
+
+.routeLegend {
+  list-style: none;
+  margin: 0;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: $font-body;
+  font-size: $size-caption;
+  color: $brand-dark;
+
+  li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  strong {
+    font-weight: 700;
+    margin-right: 4px;
+  }
+
+  span { overflow-wrap: anywhere; }
+}
+
+.routeDot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: $radius-badge;
+}
+
+.routeMapNote {
+  margin: 0;
+  padding: 0 14px 12px;
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $muted;
+}

@@ -10,10 +10,10 @@ import {
   IAllocationRule,
   IAvailabilityBlock,
   IDriver,
-  ILocation,
   IOfferCard,
   IRequestWithTrip,
   ITransportRequest,
+  IProperty,
   ITripCard,
   ITripStatusHistory,
   IVehicle,
@@ -32,8 +32,8 @@ export interface ICurrentUser {
   roles: ActorRole[];
   /** Set when this user has a DriversMaster record. */
   driverId?: number;
-  /** Property scoping. Empty means every property (Management Viewer). */
-  propertyIds: number[];
+  // NO propertyIds. Every Coordinator sees every request - see the note at
+  // the top of UserService for why scoping was removed rather than emptied.
 }
 
 export interface IUserService {
@@ -48,16 +48,13 @@ export interface IMasterDataService {
   getVehicleTypes(): Promise<IVehicleType[]>;
   /** Filtered by SuitableFor against the chosen request type. */
   getVehicleTypesFor(requestType: RequestType): Promise<IVehicleType[]>;
-  getLocations(propertyId?: number): Promise<ILocation[]>;
-  getDrivers(propertyIds?: number[]): Promise<IDriver[]>;
-  getVehicles(propertyIds?: number[]): Promise<IVehicle[]>;
-  getAllocationRule(
-    propertyId: number,
-    requestType: RequestType,
-  ): Promise<IAllocationRule | undefined>;
+  /** For the Dispatch Dashboard's property filter. A label, not a scope. */
+  getProperties(): Promise<IProperty[]>;
+  getDrivers(): Promise<IDriver[]>;
+  getVehicles(): Promise<IVehicle[]>;
+  /** Keyed on request type alone - property scoping is gone. */
+  getAllocationRule(requestType: RequestType): Promise<IAllocationRule | undefined>;
   getBlocks(from: Date, to: Date): Promise<IAvailabilityBlock[]>;
-  /** Driver id -> property ids, from DLClientMaster. Multi-property aware. */
-  getDriverPropertyMap(): Promise<Map<number, number[]>>;
   clearCache(): void;
 }
 

@@ -66,16 +66,11 @@ export class TripService implements ITripService {
             'Id', 'Title', 'RequestType', 'RequiredDateTime',
             'ReturnDateTime', 'NoOfPax', 'ItemDescription', 'Priority',
             'ReqStatus', 'Created', 'Modified',
+            'PickupText', 'PickupNotes', 'DropOffText', 'DropOffNotes',
             'Requester/Id', 'Requester/Title', 'Requester/EMail',
-            'PickupLocation/Id', 'PickupLocation/Title',
-            'DropOffLocation/Id', 'DropOffLocation/Title',
             'VehicleTypeRequested/Id', 'VehicleTypeRequested/Title',
-            'Property/Id', 'Property/Title',
           )
-          .expand(
-            'Requester', 'PickupLocation', 'DropOffLocation',
-            'VehicleTypeRequested', 'Property',
-          )
+          .expand('Requester', 'VehicleTypeRequested')
           .filter(requestIds.map((id) => `Id eq ${id}`).join(' or '))
           .top(50)();
 
@@ -90,8 +85,6 @@ export class TripService implements ITripService {
           cards.push({
             trip,
             request,
-            pickupName: request.pickupLocation?.title ?? '',
-            dropOffName: request.dropOffLocation?.title ?? '',
             requesterName: request.requester?.title ?? '',
             // Released to the driver on the same basis the driver's number is
             // released to the requester: only after acceptance, only for this

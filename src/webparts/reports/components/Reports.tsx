@@ -25,7 +25,7 @@ import {
   Select,
   TextField,
 } from '../../../common/components/Shared';
-import { ILocation, IVehicleType, REQUEST_TYPES, RequestType } from '../../../common/models';
+import { IProperty, IVehicleType, REQUEST_TYPES, RequestType } from '../../../common/models';
 import { REPORTS } from '../../../common/services/ReportService';
 import {
   ICurrentUser,
@@ -65,7 +65,7 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
   const [error, setError] = React.useState<unknown>(bootstrapError);
 
   const [vehicleTypes, setVehicleTypes] = React.useState<IVehicleType[]>([]);
-  const [locations, setLocations] = React.useState<ILocation[]>([]);
+  const [properties, setProperties] = React.useState<IProperty[]>([]);
 
   const maySeeRestricted = user ? hasRole(user, 'admin', 'coordinator') : false;
 
@@ -80,13 +80,13 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
 
     (async () => {
       try {
-        const [types, locs] = await Promise.all([
+        const [types, props] = await Promise.all([
           services.master.getVehicleTypes(),
-          services.master.getLocations(),
+          services.master.getProperties(),
         ]);
         if (cancelled) return;
         setVehicleTypes(types);
-        setLocations(locs);
+        setProperties(props);
       } catch (e) {
         if (!cancelled) setError(e);
       }
@@ -97,13 +97,6 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
     };
   }, [services]);
 
-  const properties = React.useMemo(() => {
-    const map = new Map<number, string>();
-    locations.forEach((l) => {
-      if (l.property) map.set(l.property.id, l.property.title);
-    });
-    return Array.from(map.entries()).map(([id, title]) => ({ id, title }));
-  }, [locations]);
 
   const run = async (key: string): Promise<void> => {
     if (!services) return;

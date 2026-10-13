@@ -211,7 +211,7 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
       key: 'route',
       label: 'From and to',
       render: (r) =>
-        `${r.pickupLocation?.title ?? '—'} → ${r.dropOffLocation?.title ?? '—'}`,
+        `${r.pickupText || '—'} → ${r.dropOffText || '—'}`,
     },
     {
       key: 'type',
@@ -337,10 +337,10 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
                     {formatDateTime(selected.requiredDateTime)}
                   </InfoRow>
                   <InfoRow icon="target" label="From">
-                    {selected.pickupLocation?.title ?? '—'}
+                    {selected.pickupText || '—'}
                   </InfoRow>
                   <InfoRow icon="pin" label="To">
-                    {selected.dropOffLocation?.title ?? '—'}
+                    {selected.dropOffText || '—'}
                   </InfoRow>
                   <InfoRow icon="doc" label="Request type">
                     {selected.requestType}

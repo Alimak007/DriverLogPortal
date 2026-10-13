@@ -238,6 +238,11 @@ Ensure-Field  -List 'AllocationRules' -Name 'AdvanceReleaseHours'         -Type 
 Ensure-Field  -List 'AllocationRules' -Name 'IsActive'        -Type Boolean -Default 1 -Indexed
 Ensure-Field  -List 'AllocationRules' -Name 'NotifyEnRoute'   -Type Boolean -Default 1
 Ensure-Field  -List 'AllocationRules' -Name 'NotifyInTransit' -Type Boolean -Default 1
+# The operating area. This is what replaced property scoping: a pickup further
+# than the radius from the centre is not broadcast, it goes to the Coordinator.
+Ensure-Field  -List 'AllocationRules' -Name 'OperatingCentreLat' -Type Number
+Ensure-Field  -List 'AllocationRules' -Name 'OperatingCentreLng' -Type Number
+Ensure-Field  -List 'AllocationRules' -Name 'OperatingRadiusKm'  -Type Number -Default 60
 
 Write-Host "`n=== Dispatch ===" -ForegroundColor Cyan
 
@@ -248,8 +253,18 @@ Ensure-Field  -List 'TransportRequests' -Name 'RequestType' -Type Choice -Requir
               -Choices 'Client or Client Guest', 'Staff', 'Items or Documents'
 Ensure-Field  -List 'TransportRequests' -Name 'Requester' -Type User -Required -Indexed
 Ensure-Lookup -List 'TransportRequests' -Name 'Property'             -TargetList 'PropertyMaster' -Required -Indexed
-Ensure-Lookup -List 'TransportRequests' -Name 'PickupLocation'       -TargetList 'Locations' -Required
-Ensure-Lookup -List 'TransportRequests' -Name 'DropOffLocation'      -TargetList 'Locations' -Required
+# Free coordinates from a live map search. The Locations list is no longer
+# read by anything - see the note at the top of src/common/config/AppConfig.ts.
+Ensure-Field  -List 'TransportRequests' -Name 'PickupText'     -Type Text -Required
+Ensure-Field  -List 'TransportRequests' -Name 'PickupPlaceId'  -Type Text
+Ensure-Field  -List 'TransportRequests' -Name 'PickupLat'      -Type Number -Required
+Ensure-Field  -List 'TransportRequests' -Name 'PickupLng'      -Type Number -Required
+Ensure-Field  -List 'TransportRequests' -Name 'PickupNotes'    -Type Note
+Ensure-Field  -List 'TransportRequests' -Name 'DropOffText'    -Type Text -Required
+Ensure-Field  -List 'TransportRequests' -Name 'DropOffPlaceId' -Type Text
+Ensure-Field  -List 'TransportRequests' -Name 'DropOffLat'     -Type Number -Required
+Ensure-Field  -List 'TransportRequests' -Name 'DropOffLng'     -Type Number -Required
+Ensure-Field  -List 'TransportRequests' -Name 'DropOffNotes'   -Type Note
 Ensure-Lookup -List 'TransportRequests' -Name 'VehicleTypeRequested' -TargetList 'VehicleTypes' -Required
 Ensure-Field  -List 'TransportRequests' -Name 'RequiredDateTime' -Type DateTime -Required -Indexed
 Ensure-Field  -List 'TransportRequests' -Name 'ReturnDateTime'   -Type DateTime

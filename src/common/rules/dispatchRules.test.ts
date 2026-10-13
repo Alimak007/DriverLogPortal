@@ -1,16 +1,19 @@
 /**
  * The dispatch rules, tested without SharePoint.
  *
- * These are the pieces that decide who gets offered work and what a driver is
- * allowed to do next. They are pure functions precisely so they can be tested
- * like this - no list, no network, no mocking framework.
+ * These decide who gets offered work and what a driver may do next. They are
+ * pure functions precisely so they can be tested like this - no list, no
+ * network, no mocking framework.
  */
 
 import {
-  freeVehicles,
+  distanceKm,
+  eligiblePairs,
+  explainPairIneligibility,
   IEligibilityContext,
-  isDriverEligible,
   isLegalTransition,
+  isOutsideOperatingArea,
+  isPairEligible,
 } from './dispatchRules';
 import {
   IAvailabilityBlock,
@@ -26,19 +29,32 @@ import { formatRequestRef, formatTripRef } from './identifiers';
 // Builders - a valid object by default, overridden per test
 // -----------------------------------------------------------------------------
 
-const EPOCH = new Date('2026-10-05T06:00:00Z');
-const WINDOW_TO = new Date('2026-10-05T10:00:00Z');
+const EPOCH = new Date('2026-10-13T06:00:00Z');
+const WINDOW_TO = new Date('2026-10-13T10:00:00Z');
 
 function driver(over: Partial<IDriver> = {}): IDriver {
   return {
     id: 1,
     created: EPOCH,
     modified: EPOCH,
-    driverName: 'Rashid Al Mansoori',
-    qualifiedVehicleTypes: [{ id: 10, title: 'Patrol' }],
+    driverName: 'Aabid',
+    qualifiedVehicleTypes: [],
     status: 'Available',
     maxConcurrentTrips: 1,
     isActive: true,
+    ...over,
+  };
+}
+
+function vehicle(over: Partial<IVehicle> = {}): IVehicle {
+  return {
+    id: 300,
+    created: EPOCH,
+    modified: EPOCH,
+    plateNo: 'AUH-12345',
+    vehicleType: { id: 10, title: 'Kicks / Creta' },
+    defaultDriver: { id: 1, title: 'Aabid' },
+    status: 'Available',
     ...over,
   };
 }
@@ -49,8 +65,8 @@ function block(over: Partial<IAvailabilityBlock> = {}): IAvailabilityBlock {
     created: EPOCH,
     modified: EPOCH,
     title: 'block',
-    fromDateTime: new Date('2026-10-05T00:00:00Z'),
-    toDateTime: new Date('2026-10-06T00:00:00Z'),
+    fromDateTime: new Date('2026-10-13T00:00:00Z'),
+    toDateTime: new Date('2026-10-14T00:00:00Z'),
     blockType: 'Leave',
     ...over,
   };
@@ -70,154 +86,193 @@ function trip(over: Partial<ITripAssignment> = {}): ITripAssignment {
   };
 }
 
-function vehicle(over: Partial<IVehicle> = {}): IVehicle {
-  return {
-    id: 300,
-    created: EPOCH,
-    modified: EPOCH,
-    plateNo: 'A 12345',
-    vehicleType: { id: 10, title: 'Patrol' },
-    status: 'Available',
-    ...over,
-  };
-}
-
 function ctx(over: Partial<IEligibilityContext> = {}): IEligibilityContext {
   return {
-    allocatedDriverIds: new Set<number>([1]),
-    vehicleTypeId: 10,
-    windowTo: WINDOW_TO,
+    driversById: new Map<number, IDriver>([[1, driver()]]),
     blocks: [],
     openTrips: [],
+    windowTo: WINDOW_TO,
     ruleMaxConcurrent: 1,
     ...over,
   };
 }
 
 // -----------------------------------------------------------------------------
-// Eligibility
+// Pair eligibility
 // -----------------------------------------------------------------------------
 
-describe('isDriverEligible', () => {
-  it('accepts a driver who passes every check', () => {
-    expect(isDriverEligible(driver(), ctx())).toBe(true);
+describe('isPairEligible', () => {
+  it('accepts a vehicle whose driver passes every check', () => {
+    expect(isPairEligible(vehicle(), ctx())).toBe(true);
   });
 
-  it('excludes a driver not allocated to the property', () => {
-    expect(
-      isDriverEligible(driver(), ctx({ allocatedDriverIds: new Set<number>([99]) })),
-    ).toBe(false);
+  // The pairing is the whole model now: no driver means the vehicle can never
+  // be offered, because its driver does not exist.
+  it('excludes a vehicle with no DefaultDriver', () => {
+    const reasons = explainPairIneligibility(vehicle({ defaultDriver: undefined }), ctx());
+    expect(reasons.length).toBe(1);
+    expect(reasons[0]).toContain('no DefaultDriver');
   });
 
-  it('excludes a driver not qualified for the requested vehicle type', () => {
-    const vanDriver = driver({ qualifiedVehicleTypes: [{ id: 20, title: 'Cargo Van' }] });
-    expect(isDriverEligible(vanDriver, ctx({ vehicleTypeId: 10 }))).toBe(false);
+  it('excludes a vehicle whose driver is not in the active set', () => {
+    const reasons = explainPairIneligibility(
+      vehicle({ defaultDriver: { id: 99, title: 'Gone' } }),
+      ctx(),
+    );
+    expect(reasons.length).toBe(1);
+    expect(reasons[0]).toContain('inactive or missing');
   });
 
-  it('excludes a driver on leave across the window', () => {
-    expect(
-      isDriverEligible(
-        driver(),
-        ctx({ blocks: [block({ driver: { id: 1, title: 'Rashid' }, blockType: 'Leave' })] }),
-      ),
-    ).toBe(false);
+  it('excludes when the DRIVER is blocked in the window', () => {
+    const blocks = [block({ driver: { id: 1, title: 'Aabid' }, blockType: 'Leave' })];
+    expect(isPairEligible(vehicle(), ctx({ blocks }))).toBe(false);
+  });
+
+  // The check that stops a vehicle booked into the garage being offered while
+  // its VehStatus still reads Available.
+  it('excludes when the VEHICLE is blocked in the window', () => {
+    const blocks = [block({ vehicle: { id: 300, title: 'AUH-12345' }, blockType: 'Maintenance' })];
+    expect(isPairEligible(vehicle(), ctx({ blocks }))).toBe(false);
   });
 
   it('does NOT exclude on a Shift block - a shift says when they work', () => {
-    expect(
-      isDriverEligible(
-        driver(),
-        ctx({ blocks: [block({ driver: { id: 1, title: 'Rashid' }, blockType: 'Shift' })] }),
-      ),
-    ).toBe(true);
+    const blocks = [block({ driver: { id: 1, title: 'Aabid' }, blockType: 'Shift' })];
+    expect(isPairEligible(vehicle(), ctx({ blocks }))).toBe(true);
   });
 
-  it('ignores a block belonging to a different driver', () => {
-    expect(
-      isDriverEligible(
-        driver(),
-        ctx({ blocks: [block({ driver: { id: 2, title: 'Someone else' } })] }),
-      ),
-    ).toBe(true);
+  it('ignores a block belonging to a different driver or vehicle', () => {
+    const blocks = [
+      block({ driver: { id: 2, title: 'Someone else' } }),
+      block({ vehicle: { id: 999, title: 'Another van' } }),
+    ];
+    expect(isPairEligible(vehicle(), ctx({ blocks }))).toBe(true);
   });
 
-  // The case that catches people out: a licence valid at pickup but not at
-  // drop-off must exclude.
+  // The case that catches people out: valid at pickup, expired by drop-off.
   it('excludes a licence that expires DURING the trip window', () => {
-    const expiring = driver({ licenceExpiry: new Date('2026-10-05T08:00:00Z') });
-    expect(isDriverEligible(expiring, ctx({ windowTo: WINDOW_TO }))).toBe(false);
+    const d = driver({ licenceExpiry: new Date('2026-10-13T08:00:00Z') });
+    expect(isPairEligible(vehicle(), ctx({ driversById: new Map([[1, d]]) }))).toBe(false);
   });
 
-  it('accepts a licence that is valid to the end of the window', () => {
-    const ok = driver({ licenceExpiry: new Date('2026-10-05T10:00:00Z') });
-    expect(isDriverEligible(ok, ctx({ windowTo: WINDOW_TO }))).toBe(true);
+  it('accepts a licence valid to the end of the window', () => {
+    const d = driver({ licenceExpiry: new Date('2026-10-13T10:00:00Z') });
+    expect(isPairEligible(vehicle(), ctx({ driversById: new Map([[1, d]]) }))).toBe(true);
   });
 
   it('accepts a driver with no licence expiry recorded', () => {
-    expect(isDriverEligible(driver({ licenceExpiry: undefined }), ctx())).toBe(true);
+    const d = driver({ licenceExpiry: undefined });
+    expect(isPairEligible(vehicle(), ctx({ driversById: new Map([[1, d]]) }))).toBe(true);
   });
 
-  it('excludes a driver already at their own concurrent cap', () => {
-    expect(
-      isDriverEligible(
-        driver({ maxConcurrentTrips: 1 }),
-        ctx({ openTrips: [trip({ driver: { id: 1, title: 'Rashid' } })] }),
-      ),
-    ).toBe(false);
+  it('excludes a driver already at their cap', () => {
+    const openTrips = [trip({ driver: { id: 1, title: 'Aabid' } })];
+    expect(isPairEligible(vehicle(), ctx({ openTrips }))).toBe(false);
   });
 
   it("honours the driver's own cap above the rule default", () => {
+    const d = driver({ maxConcurrentTrips: 2 });
+    const openTrips = [trip({ driver: { id: 1, title: 'Aabid' } })];
     expect(
-      isDriverEligible(
-        driver({ maxConcurrentTrips: 2 }),
-        ctx({
-          ruleMaxConcurrent: 1,
-          openTrips: [trip({ driver: { id: 1, title: 'Rashid' } })],
-        }),
-      ),
+      isPairEligible(vehicle(), ctx({ driversById: new Map([[1, d]]), openTrips, ruleMaxConcurrent: 1 })),
     ).toBe(true);
   });
 
-  it('does not count another driver\'s trips against this one', () => {
-    expect(
-      isDriverEligible(
-        driver(),
-        ctx({ openTrips: [trip({ driver: { id: 2, title: 'Other' } })] }),
-      ),
-    ).toBe(true);
+  it("does not count another driver's trips against this one", () => {
+    const openTrips = [trip({ driver: { id: 2, title: 'Other' } })];
+    expect(isPairEligible(vehicle(), ctx({ openTrips }))).toBe(true);
+  });
+
+  it('reports every reason, not just the first', () => {
+    const d = driver({ licenceExpiry: new Date('2026-10-13T08:00:00Z') });
+    const blocks = [block({ driver: { id: 1, title: 'Aabid' } })];
+    const openTrips = [trip({ driver: { id: 1, title: 'Aabid' } })];
+    const reasons = explainPairIneligibility(
+      vehicle(),
+      ctx({ driversById: new Map([[1, d]]), blocks, openTrips }),
+    );
+    expect(reasons.length).toBe(3);
   });
 });
 
 // -----------------------------------------------------------------------------
-// Vehicle availability
+// The pair set - this is the vehicle-type routing test
 // -----------------------------------------------------------------------------
 
-describe('freeVehicles', () => {
-  it('returns a vehicle that is on no trip and has no block', () => {
-    expect(freeVehicles([vehicle()], [], []).length).toBe(1);
+describe('eligiblePairs', () => {
+  it('pairs each vehicle with its own driver', () => {
+    const aabid = driver({ id: 1, driverName: 'Aabid' });
+    const mahedi = driver({ id: 3, driverName: 'Mahedi' });
+    const vehicles = [
+      vehicle({ id: 300, plateNo: 'C-1', defaultDriver: { id: 1, title: 'Aabid' } }),
+      vehicle({ id: 302, plateNo: 'C-2', defaultDriver: { id: 3, title: 'Mahedi' } }),
+    ];
+    const pairs = eligiblePairs(
+      vehicles,
+      ctx({ driversById: new Map([[1, aabid], [3, mahedi]]) }),
+    );
+    expect(pairs.length).toBe(2);
+    expect(pairs.map((p) => p.driver.driverName).sort()).toEqual(['Aabid', 'Mahedi']);
   });
 
-  it('excludes a vehicle bound to an open trip', () => {
-    const busy = [trip({ vehicle: { id: 300, title: 'A 12345' } })];
-    expect(freeVehicles([vehicle()], busy, []).length).toBe(0);
+  it('drops only the ineligible pair, keeping the rest', () => {
+    const aabid = driver({ id: 1 });
+    const mahedi = driver({ id: 3 });
+    const vehicles = [
+      vehicle({ id: 300, defaultDriver: { id: 1, title: 'Aabid' } }),
+      vehicle({ id: 302, defaultDriver: { id: 3, title: 'Mahedi' } }),
+    ];
+    const blocks = [block({ driver: { id: 3, title: 'Mahedi' } })];
+    const pairs = eligiblePairs(
+      vehicles,
+      ctx({ driversById: new Map([[1, aabid], [3, mahedi]]), blocks }),
+    );
+    expect(pairs.length).toBe(1);
+    expect(pairs[0].driver.id).toBe(1);
   });
 
-  // The whole point of checking blocks as well as VehStatus: a vehicle booked
-  // into the garage through a block, still reading Available, must not be
-  // offered and bound.
-  it('excludes a vehicle blocked for maintenance even when its status says Available', () => {
-    const blocks = [block({ vehicle: { id: 300, title: 'A 12345' }, blockType: 'Maintenance' })];
-    expect(freeVehicles([vehicle({ status: 'Available' })], [], blocks).length).toBe(0);
+  it('returns nothing when no vehicle of the type has a driver', () => {
+    const vehicles = [vehicle({ defaultDriver: undefined })];
+    expect(eligiblePairs(vehicles, ctx()).length).toBe(0);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Distance - what replaced property scoping
+// -----------------------------------------------------------------------------
+
+describe('distanceKm', () => {
+  it('is zero for the same point', () => {
+    expect(Math.round(distanceKm(24.4539, 54.3773, 24.4539, 54.3773))).toBe(0);
   });
 
-  it('does not exclude on a Shift block', () => {
-    const blocks = [block({ vehicle: { id: 300, title: 'A 12345' }, blockType: 'Shift' })];
-    expect(freeVehicles([vehicle()], [], blocks).length).toBe(1);
+  // Abu Dhabi to Dubai is about 120 km as the crow flies.
+  it('measures Abu Dhabi to Dubai at roughly 120 km', () => {
+    const d = distanceKm(24.4539, 54.3773, 25.2048, 55.2708);
+    expect(d).toBeGreaterThan(100);
+    expect(d).toBeLessThan(140);
   });
 
-  it('ignores a block belonging to a different vehicle', () => {
-    const blocks = [block({ vehicle: { id: 999, title: 'Z 99999' } })];
-    expect(freeVehicles([vehicle()], [], blocks).length).toBe(1);
+  it('is symmetric', () => {
+    const a = distanceKm(24.4539, 54.3773, 25.2048, 55.2708);
+    const b = distanceKm(25.2048, 55.2708, 24.4539, 54.3773);
+    expect(Math.round(a)).toBe(Math.round(b));
+  });
+});
+
+describe('isOutsideOperatingArea', () => {
+  const area = { centreLat: 24.4539, centreLng: 54.3773, radiusKm: 60 };
+
+  it('accepts a pickup inside the radius', () => {
+    expect(isOutsideOperatingArea(24.47, 54.4, area)).toBe(false);
+  });
+
+  it('rejects a Dubai pickup against an Abu Dhabi centre', () => {
+    expect(isOutsideOperatingArea(25.2048, 55.2708, area)).toBe(true);
+  });
+
+  // No coordinates is not the same as "too far" - it must not block a booking.
+  it('treats missing coordinates as inside', () => {
+    expect(isOutsideOperatingArea(undefined, undefined, area)).toBe(false);
   });
 });
 
@@ -257,8 +312,8 @@ describe('isLegalTransition', () => {
     });
   });
 
-  // Cancellation is NOT a transition - it goes through cancel(), which has
-  // different side effects per caller.
+  // Cancellation goes through cancel(), which has different side effects per
+  // caller - it is not a tap.
   it('does not treat Cancelled as a tap from any state', () => {
     expect(isLegalTransition(TRIP_STATUS.Assigned, TRIP_STATUS.Cancelled)).toBe(false);
     expect(isLegalTransition(TRIP_STATUS.EnRoute, TRIP_STATUS.Cancelled)).toBe(false);

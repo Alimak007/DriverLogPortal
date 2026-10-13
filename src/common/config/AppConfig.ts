@@ -14,10 +14,19 @@ export type FontSource = 'siteAssets' | 'google';
 export type RequestIdFormat = 'short' | 'dated';
 
 /** Internal list titles. These are the SharePoint titles, not display names. */
+/**
+ * Internal list titles.
+ *
+ * `Locations` and `DLClientMaster` are deliberately ABSENT. Both lists still
+ * exist on the site and keep their data, but nothing in the solution reads
+ * them any more: destinations come from a live map search, and property
+ * scoping is gone. Do not add them back "just in case" - a fallback path to a
+ * list nobody maintains is worse than no path at all.
+ */
 export const LIST = {
-  // Reused unchanged
+  // Reused unchanged. PropertyMaster is now a REPORTING label only - the
+  // allocation engine does not read it.
   propertyMaster: 'PropertyMaster',
-  dlClientMaster: 'DLClientMaster',
 
   // Refactored
   vehicleMaster: 'VehicleMaster',
@@ -30,7 +39,6 @@ export const LIST = {
   tripStatusHistory: 'TripStatusHistory',
   availabilityBlocks: 'AvailabilityBlocks',
   vehicleTypes: 'VehicleTypes',
-  locations: 'Locations',
   allocationRules: 'AllocationRules',
   notificationLog: 'NotificationLog',
   templates: 'Templates',
@@ -96,6 +104,26 @@ export interface IAppConfig {
     myBookings: string;
   };
 
+  /**
+   * TomTom, for the map tiles and the place search on the booking form.
+   *
+   * THIS KEY SHIPS IN THE BUNDLE, which any authenticated user can read and
+   * extract. That is accepted for a browser key, but it means two things are
+   * not optional:
+   *
+   *   1. Restrict it by HTTP REFERRER to the SharePoint domain in the TomTom
+   *      developer portal. Without that, anyone who reads the bundle can
+   *      spend the quota from anywhere.
+   *   2. Set a DAILY USAGE ALERT, so exhaustion reaches the key owner rather
+   *      than reaching a requester as "Location search is unavailable".
+   *
+   * The web part property pane overrides this per site. Rotating the key is a
+   * change to this one line.
+   */
+  tomtom: {
+    apiKey: string;
+  };
+
 }
 
 export const APP_CONFIG: IAppConfig = {
@@ -123,6 +151,10 @@ export const APP_CONFIG: IAppConfig = {
   pages: {
     bookARide: '/SitePages/Home.aspx',
     myBookings: '/SitePages/MyBookings.aspx',
+  },
+
+  tomtom: {
+    apiKey: 'ofXMyezRK70KYWilHswlPgWrZHwdLcsC',
   },
 
 };

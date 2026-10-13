@@ -32,7 +32,6 @@ import {
 } from '../../../common/components/Shared';
 import { buildStages, EtaDisplay, Timeline } from '../../../common/components/Timeline';
 import {
-  ILocation,
   IRequestWithTrip,
   ITransportRequest,
   IVehicleType,
@@ -52,6 +51,9 @@ import {
   ITimeSlot,
   timeSlots,
 } from '../../../common/utils/dates';
+import { distanceKm } from '../../../common/rules/dispatchRules';
+import MapPicker, { IPlace } from './MapPicker';
+import RouteMap from './RouteMap';
 import styles from './BookARide.module.scss';
 
 export interface IBookARideProps {
@@ -60,6 +62,16 @@ export interface IBookARideProps {
   bootstrapError?: unknown;
   /** Property to book against. Defaults to the requester's own property. */
   defaultPropertyId: number;
+  /**
+   * TomTom key for the map tiles and the place search.
+   *
+   * The SPFx bundle is readable by any authenticated user, so this key IS
+   * extractable. That is expected for a browser key - but it must be
+   * restricted by HTTP referrer to the SharePoint domain in the TomTom
+   * developer portal, and a daily usage alert must be set. Do not ship
+   * without both.
+   */
+  tomtomApiKey: string;
   /** How long screen 5 waits for a driver before offering to carry on. */
   processingPollMs: number;
   /** The My Bookings page. The link to it is left out when this is not given. */
@@ -128,8 +140,10 @@ const REQUEST_TYPE_CAPTION: Record<RequestType, string> = {
 };
 
 interface IDraft {
-  pickup?: ILocation;
-  dropOff?: ILocation;
+  pickup?: IPlace;
+  dropOff?: IPlace;
+  pickupNotes: string;
+  dropOffNotes: string;
   isAdvance: boolean;
   day: Date;
   slot?: Date;
@@ -143,6 +157,8 @@ interface IDraft {
 }
 
 const emptyDraft = (): IDraft => ({
+  pickupNotes: '',
+  dropOffNotes: '',
   isAdvance: false,
   day: new Date(),
   otherVehicleText: '',
@@ -152,12 +168,13 @@ const emptyDraft = (): IDraft => ({
 });
 
 export const BookARide: React.FC<IBookARideProps> = (props) => {
-  const { services, user, bootstrapError, defaultPropertyId, processingPollMs, myBookingsUrl } =
-    props;
+  const {
+    services, user, bootstrapError, defaultPropertyId, processingPollMs,
+    myBookingsUrl, tomtomApiKey,
+  } = props;
 
   const [screen, setScreen] = React.useState<ScreenIndex>(1);
   const [draft, setDraft] = React.useState<IDraft>(emptyDraft());
-  const [locations, setLocations] = React.useState<ILocation[]>([]);
   const [vehicleTypes, setVehicleTypes] = React.useState<IVehicleType[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
@@ -169,13 +186,23 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
   const [tracked, setTracked] = React.useState<IRequestWithTrip | undefined>();
 
   /**
+   * The operating area, for the out-of-range warning and to bias the search
+   * toward local results. Read from AllocationRules - never hard-coded, since
+   * the 60 km radius is a figure the business has not confirmed.
+   */
+  const [area, setArea] = React.useState({
+    centre: { lat: 24.4539, lng: 54.3773 },
+    radiusKm: 60,
+  });
+
+  /**
    * The requester's own property, if the site tells us one. Used ONLY to
    * default the pickup point. It is a stable number, so it never causes the
    * locations below to reload.
    */
   const homePropertyId = React.useMemo(
-    () => defaultPropertyId || user?.propertyIds[0] || 0,
-    [defaultPropertyId, user],
+    () => defaultPropertyId || 0,
+    [defaultPropertyId],
   );
 
   /**
@@ -190,7 +217,11 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
    * Dubai airport is an ordinary journey, and narrowing the destination list
    * to the pickup's property would make it impossible to book.
    */
-  const propertyId = draft.pickup?.property?.id ?? homePropertyId;
+  /**
+   * Written on the request FOR REPORTING ONLY. Allocation ignores it entirely
+   * now - who gets offered the trip is decided by vehicle type and distance.
+   */
+  const propertyId = homePropertyId;
 
   // ---------------------------------------------------------------------------
   // Reference data
@@ -205,20 +236,19 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
 
     (async () => {
       try {
-        const [locs, types] = await Promise.all([
-          // EVERY location, unfiltered. Both pickers read this one list.
-          services.master.getLocations(),
-          services.master.getVehicleTypes(),
-        ]);
+        const types = await services.master.getVehicleTypes();
         if (cancelled) return;
-        setLocations(locs);
         setVehicleTypes(types);
 
-        // Pickup DEFAULTS to the requester's own property - a starting point,
-        // not a restriction. They can pick any location in the list.
-        if (homePropertyId) {
-          const home = locs.filter((l) => l.property?.id === homePropertyId)[0];
-          if (home) setDraft((d) => ({ ...d, pickup: d.pickup ?? home }));
+        // The operating area comes from AllocationRules. Any request type
+        // carries the same centre and radius, so the first active rule will do.
+        const rule = await services.master.getAllocationRule('Staff');
+        if (cancelled) return;
+        if (rule?.operatingCentreLat !== undefined && rule?.operatingCentreLng !== undefined) {
+          setArea({
+            centre: { lat: rule.operatingCentreLat, lng: rule.operatingCentreLng },
+            radiusKm: rule.operatingRadiusKm || 60,
+          });
         }
       } catch (e) {
         if (!cancelled) setError(e);
@@ -299,8 +329,11 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
     if (from === 1) {
       if (!draft.pickup) return 'Choose a pickup point.';
       if (!draft.dropOff) return 'Choose a destination.';
-      if (draft.pickup.id === draft.dropOff.id) {
-        return 'The pickup point and the destination are the same.';
+      if (
+        draft.pickup.lat === draft.dropOff.lat &&
+        draft.pickup.lng === draft.dropOff.lng
+      ) {
+        return 'The pickup point and the destination are the same place.';
       }
     }
     if (from === 2 && !draft.slot) return 'Choose a time.';
@@ -340,8 +373,16 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
       const result = await services.dispatch.createRequest({
         requestType: draft.requestType,
         propertyId,
-        pickupLocationId: draft.pickup.id,
-        dropOffLocationId: draft.dropOff.id,
+        pickupText: draft.pickup.text,
+        pickupPlaceId: draft.pickup.placeId,
+        pickupLat: draft.pickup.lat,
+        pickupLng: draft.pickup.lng,
+        pickupNotes: draft.pickupNotes.trim() || undefined,
+        dropOffText: draft.dropOff.text,
+        dropOffPlaceId: draft.dropOff.placeId,
+        dropOffLat: draft.dropOff.lat,
+        dropOffLng: draft.dropOff.lng,
+        dropOffNotes: draft.dropOffNotes.trim() || undefined,
         requiredDateTime: draft.slot,
         vehicleTypeId: draft.vehicleType.id,
         noOfPax: !isItems && isOthers && !isNaN(pax) ? pax : undefined,
@@ -456,10 +497,12 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
           >
         {screen === 1 ? (
           <ScreenWhere
-            locations={locations}
             draft={draft}
             setDraft={setDraft}
             validation={validation}
+            apiKey={tomtomApiKey}
+            isActive={screen === 1}
+            area={area}
           />
         ) : undefined}
 
@@ -498,7 +541,7 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
         ) : undefined}
 
         {screen === 7 && tracked ? (
-          <ScreenTrack result={tracked} locations={locations} onBookAnother={startOver} />
+          <ScreenTrack result={tracked} apiKey={tomtomApiKey} onBookAnother={startOver} />
         ) : undefined}
 
           </div>
@@ -593,289 +636,53 @@ interface IScreenProps {
 }
 
 function ScreenWhere({
-  locations,
   draft,
   setDraft,
   validation,
-}: IScreenProps & { locations: ILocation[] }): JSX.Element {
+  apiKey,
+  isActive,
+  area,
+}: IScreenProps & {
+  apiKey: string;
+  isActive: boolean;
+  area: { centre: { lat: number; lng: number }; radiusKm: number };
+}): JSX.Element {
+  // A warning, never a block. A pickup outside the operating area can still be
+  // booked - it simply routes to the Coordinator instead of broadcasting.
+  const farOut =
+    draft.pickup !== undefined &&
+    distanceKm(draft.pickup.lat, draft.pickup.lng, area.centre.lat, area.centre.lng) >
+      area.radiusKm;
+
   return (
     <div className={styles.screen}>
-      <LocationPicker
-        locations={locations}
-        selected={draft.pickup}
-        onSelect={(l) => setDraft((d) => ({ ...d, pickup: l }))}
-        label="pickup point"
-        variant="pickup"
+      <MapPicker
+        apiKey={apiKey}
+        isActive={isActive}
+        centre={area.centre}
+        radiusKm={area.radiusKm}
+        pickup={draft.pickup}
+        dropOff={draft.dropOff}
+        pickupNotes={draft.pickupNotes}
+        dropOffNotes={draft.dropOffNotes}
+        onPickup={(p) => setDraft((d) => ({ ...d, pickup: p }))}
+        onDropOff={(p) => setDraft((d) => ({ ...d, dropOff: p }))}
+        onPickupNotes={(n) => setDraft((d) => ({ ...d, pickupNotes: n }))}
+        onDropOffNotes={(n) => setDraft((d) => ({ ...d, dropOffNotes: n }))}
       />
 
-      <div className={styles.whereTo}>
-        <div className={styles.whereHead}>
-          <span className={styles.wherePin} aria-hidden="true">
-            <Icon name="pin" size={26} />
-          </span>
-          <span className={styles.whereTitle}>Where to?</span>
-        </div>
+      {farOut ? (
+        <Notice tone="attention">
+          This pickup is outside the usual operating area. You can still book
+          it - the Transportation Coordinator will assign someone by hand
+          rather than it going out to drivers automatically.
+        </Notice>
+      ) : undefined}
 
-        <LocationPicker
-          locations={locations}
-          selected={draft.dropOff}
-          onSelect={(l) => setDraft((d) => ({ ...d, dropOff: l }))}
-          label="destination"
-          variant="destination"
-        />
-
-        {validation ? (
-          <span className={styles.whereError} role="alert">
-            {validation}
-          </span>
-        ) : undefined}
-        <span className={styles.whereHint}>
-          Type to search. If your destination is not listed, ask a Fleet Admin to add it.
-        </span>
-      </div>
+      {validation ? <Notice tone="attention">{validation}</Notice> : undefined}
     </div>
   );
 }
-
-/**
- * The backdrop behind the pickup card. A DRAWING, not a map: phase 1 has no
- * coordinates, so nothing on it stands for a real place. Phase 2 drops a live
- * map into this region.
- */
-function MapArt(): JSX.Element {
-  return (
-    <svg
-      className={styles.mapArt}
-      viewBox="0 0 400 220"
-      preserveAspectRatio="xMidYMid slice"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <rect width="400" height="220" fill="#EEF0EC" />
-      <path d="M250 0C240 40 300 70 290 120S330 190 320 220H400V0z" fill="#D5E6F2" />
-      <path d="M0 150l90-30 40 50-60 50H0z" fill="#DDEBD6" />
-      <path d="M150 0l60 0 20 50-70 20z" fill="#E4E6E0" />
-      <g stroke="#FFFFFF" strokeLinecap="round" fill="none">
-        <path d="M-10 60L270 110" strokeWidth="9" />
-        <path d="M60 -10L150 230" strokeWidth="8" />
-        <path d="M-10 190L240 150 300 230" strokeWidth="7" />
-        <path d="M180 -10L210 95 120 230" strokeWidth="5" />
-        <path d="M-10 110L110 100" strokeWidth="4" />
-        <path d="M230 40L280 60" strokeWidth="4" />
-      </g>
-    </svg>
-  );
-}
-
-/** The drawing on a destination's thumbnail, chosen by its category. */
-function categoryIcon(category?: string): IconName {
-  switch (category) {
-    case 'Airport': return 'plane';
-    case 'Hospital': return 'plus';
-    case 'Residence': return 'home';
-    case 'Warehouse': return 'box';
-    case 'Office':
-    case 'Hotel': return 'building';
-    default: return 'pin';
-  }
-}
-
-/**
- * A searchable picker over Locations, NEVER a text box. What the requester
- * types filters the list; it never becomes the answer.
- *
- * Two looks over one behaviour. The PICKUP sits as a card on the backdrop,
- * with a round button that opens its search. The DESTINATION keeps its search
- * box in view and shows the chosen place beneath it.
- *
- * Both lists OPEN on the search box or its button, and CLOSE on a choice, on
- * the same button, on Escape, and on a click anywhere else.
- */
-function LocationPicker({ locations, selected, onSelect, label, variant }: {
-  locations: ILocation[];
-  selected?: ILocation;
-  onSelect: (location: ILocation) => void;
-  label: string;
-  variant: 'pickup' | 'destination';
-}): JSX.Element {
-  const [query, setQuery] = React.useState('');
-  const [open, setOpen] = React.useState(false);
-  const wrapRef = React.useRef<HTMLDivElement>(null);
-
-  // Closing never changes the selection. What was typed is only a filter, so
-  // it is thrown away with the list.
-  const close = (): void => {
-    setOpen(false);
-    setQuery('');
-  };
-
-  React.useEffect(() => {
-    if (!open) return undefined;
-
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') close();
-    };
-    const onDown = (e: MouseEvent): void => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) close();
-    };
-    document.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', onDown);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('mousedown', onDown);
-    };
-  }, [open]);
-
-  const matches = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const pool = locations.filter((l) => l.isActive);
-    if (q.length === 0) return pool.slice(0, 20);
-    return pool
-      .filter(
-        (l) =>
-          l.title.toLowerCase().indexOf(q) !== -1 ||
-          (l.address ?? '').toLowerCase().indexOf(q) !== -1,
-      )
-      .slice(0, 20);
-  }, [locations, query]);
-
-  const isPickup = variant === 'pickup';
-  const showSearch = isPickup ? open || !selected : true;
-  const showList = open;
-
-  const search = (
-    <div className={styles.searchBox}>
-      <TextField
-        value={query}
-        placeholder={
-          selected ? selected.title : isPickup ? `Search for a ${label}` : 'Select destination'
-        }
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        aria-label={`Search for a ${label}`}
-        aria-expanded={showList}
-      />
-      <button
-        type="button"
-        className={styles.searchIcon}
-        aria-label={open ? `Close the ${label} list` : `Open the ${label} list`}
-        aria-expanded={open}
-        onClick={() => (open ? close() : setOpen(true))}
-      >
-        <Icon name="search" size={18} />
-      </button>
-    </div>
-  );
-
-  const list = (
-    <ul
-      className={[styles.pickerList, isPickup ? styles.pickerListFloating : ''].join(' ')}
-      aria-label={`Matching ${label}s`}
-    >
-      {matches.length === 0 ? (
-        <li className={styles.pickerEmpty}>
-          No location matches that. Try a shorter search.
-        </li>
-      ) : (
-        matches.map((l) => {
-          const isSelected = selected?.id === l.id;
-          return (
-            <li key={l.id}>
-              <button
-                type="button"
-                className={[
-                  styles.pickerOption,
-                  isSelected ? styles.pickerOptionSelected : '',
-                ].join(' ')}
-                aria-pressed={isSelected}
-                onClick={() => {
-                  onSelect(l);
-                  setQuery('');
-                  setOpen(false);
-                }}
-              >
-                <span className={styles.pickerThumb} aria-hidden="true">
-                  <Icon name={categoryIcon(l.category)} size={22} />
-                </span>
-                <span className={styles.pickerText}>
-                  {l.title}
-                  {l.address ? <span className={styles.pickerMeta}>{l.address}</span> : undefined}
-                </span>
-                {isSelected ? <SelectedMark /> : undefined}
-              </button>
-            </li>
-          );
-        })
-      )}
-    </ul>
-  );
-
-  if (!isPickup) {
-    return (
-      <div className={styles.pickerWrap} ref={wrapRef}>
-        {search}
-        {showList ? list : undefined}
-        {selected && !open ? (
-          <div className={styles.pickerChosen}>
-            <span className={styles.pickerThumb} aria-hidden="true">
-              <Icon name={categoryIcon(selected.category)} size={22} />
-            </span>
-            <span className={styles.pickerText}>
-              <span className={styles.srOnly}>Selected: </span>
-              {selected.title}
-              {selected.address ? (
-                <span className={styles.pickerMeta}>{selected.address}</span>
-              ) : undefined}
-            </span>
-            <SelectedMark />
-          </div>
-        ) : undefined}
-      </div>
-    );
-  }
-
-  return (
-    <div className={styles.mapArea} role="group" aria-label="Pickup point" ref={wrapRef}>
-      <MapArt />
-      <div className={styles.mapContent}>
-        {selected ? (
-          <div className={styles.locationCard}>
-            <span className={styles.locationDot} aria-hidden="true" />
-            <span className={styles.locationText}>
-              <span className={styles.locationKicker}>Your Pickup Point</span>
-              <strong className={styles.locationTitle}>{selected.title}</strong>
-              {selected.address ? (
-                <span className={styles.locationAddress}>{selected.address}</span>
-              ) : undefined}
-            </span>
-          </div>
-        ) : undefined}
-
-        {showSearch ? search : undefined}
-        {showList ? list : undefined}
-
-        {selected ? (
-          <button
-            type="button"
-            className={styles.locateButton}
-            aria-label="Change pickup point"
-            aria-expanded={open}
-            onClick={() => (open ? close() : setOpen(true))}
-          >
-            <Icon name="target" size={22} />
-          </button>
-        ) : undefined}
-      </div>
-    </div>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Screen 2 - when
-// -----------------------------------------------------------------------------
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -1633,10 +1440,10 @@ function ScreenConfirmed({ result, myBookingsUrl, onTrack, onBookAnother }: {
           {formatDateTime(request.requiredDateTime)}
         </InfoRow>
         <InfoRow icon="target" label="From">
-          {request.pickupLocation?.title ?? '—'}
+          {request.pickupText || '—'}
         </InfoRow>
         <InfoRow icon="pin" label="To">
-          {request.dropOffLocation?.title ?? '—'}
+          {request.dropOffText || '—'}
         </InfoRow>
         <InfoRow icon="doc" label="Type">
           {request.requestType}
@@ -1696,9 +1503,9 @@ function ScreenConfirmed({ result, myBookingsUrl, onTrack, onBookAnother }: {
  * remain on screen THROUGHOUT, because that is what a requester at a kerbside
  * actually needs in order to identify the car that pulls up.
  */
-function ScreenTrack({ result, locations, onBookAnother }: {
+function ScreenTrack({ result, apiKey, onBookAnother }: {
   result: IRequestWithTrip;
-  locations: ILocation[];
+  apiKey: string;
   onBookAnother: () => void;
 }): JSX.Element {
   const { request, trip } = result;
@@ -1724,8 +1531,6 @@ function ScreenTrack({ result, locations, onBookAnother }: {
 
   // The addresses under the two place names. Looked up from the locations the
   // wizard already holds; nothing further is read.
-  const addressOf = (id?: number): string | undefined =>
-    id === undefined ? undefined : locations.filter((l) => l.id === id)[0]?.address;
 
   return (
     <div className={styles.screen}>
@@ -1771,13 +1576,34 @@ function ScreenTrack({ result, locations, onBookAnother }: {
             </div>
           ) : undefined}
 
-          <TrackMap
-            tripStatus={trip.tripStatus}
-            fromTitle={request.pickupLocation?.title ?? '—'}
-            fromAddress={addressOf(request.pickupLocation?.id)}
-            toTitle={request.dropOffLocation?.title ?? '—'}
-            toAddress={addressOf(request.dropOffLocation?.id)}
-          />
+          {/*
+            A real map where we have coordinates, the illustration where we do
+            not - requests booked before the map change have no lat/lng, and a
+            map centred on nothing is worse than a drawing.
+          */}
+          {request.pickupLat !== undefined &&
+          request.pickupLng !== undefined &&
+          request.dropOffLat !== undefined &&
+          request.dropOffLng !== undefined ? (
+            <RouteMap
+              apiKey={apiKey}
+              isActive
+              pickupLat={request.pickupLat}
+              pickupLng={request.pickupLng}
+              pickupText={request.pickupText || '—'}
+              dropOffLat={request.dropOffLat}
+              dropOffLng={request.dropOffLng}
+              dropOffText={request.dropOffText || '—'}
+            />
+          ) : (
+            <TrackMap
+              tripStatus={trip.tripStatus}
+              fromTitle={request.pickupText || '—'}
+              fromAddress={request.pickupNotes}
+              toTitle={request.dropOffText || '—'}
+              toAddress={request.dropOffNotes}
+            />
+          )}
 
           <div className={styles.rideCard}>
             <div className={styles.rideRow}>
@@ -1855,7 +1681,6 @@ function TrackMap({ tripStatus, fromTitle, fromAddress, toTitle, toAddress }: {
 
   return (
     <div className={styles.trackMap}>
-      <MapArt />
       <svg
         className={styles.trackRoute}
         viewBox="0 0 100 100"

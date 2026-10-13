@@ -14,6 +14,7 @@ import BookARide, { IBookARideProps } from './components/BookARide';
 
 export interface IBookARideWebPartProps extends IFleetWebPartProps {
   defaultPropertyId: number;
+  tomtomApiKey: string;
   processingPollMs: number;
 }
 
@@ -27,6 +28,10 @@ export default class BookARideWebPart extends FleetWebPartBase<IBookARideWebPart
       defaultPropertyId: parseInt(String(this.properties.defaultPropertyId ?? ''), 10) || 0,
       processingPollMs: (this.properties.processingPollMs ?? 10) * 1000,
       myBookingsUrl: `${this.context.pageContext.web.absoluteUrl}${APP_CONFIG.pages.myBookings}`,
+      // The pane wins where a site has its own key; otherwise the shared
+      // default in APP_CONFIG applies, so the form works with no setup.
+      tomtomApiKey:
+        String(this.properties.tomtomApiKey ?? '').trim() || APP_CONFIG.tomtom.apiKey,
     });
 
     ReactDom.render(element, this.domElement);
@@ -47,6 +52,14 @@ export default class BookARideWebPart extends FleetWebPartBase<IBookARideWebPart
             description:
               'The PropertyMaster item ID this page books against. Leave at 0 to use ' +
               "the signed-in user's own property.",
+          }),
+          PropertyPaneTextField('tomtomApiKey', {
+            label: 'TomTom API key',
+            description:
+              'Optional. Overrides the shared key in APP_CONFIG for this site. ' +
+              'Either way the key ships in the bundle and IS extractable, so it ' +
+              'must be restricted by HTTP referrer in the TomTom portal and have ' +
+              'a daily usage alert set.',
           }),
           PropertyPaneSlider('processingPollMs', {
             label: 'Processing screen refresh (seconds)',

@@ -57,16 +57,13 @@ export class OfferService implements IOfferService {
             'ReturnDateTime', 'NoOfPax', 'ItemDescription', 'ItemNotes',
             'OtherVehicleText', 'Priority', 'ReqStatus', 'OfferClosesAt',
             'Created', 'Modified',
+            // The driver needs the notes as much as the address: a pin reading
+            // "KIZAD, Abu Dhabi" does not say which gate.
+            'PickupText', 'PickupNotes', 'DropOffText', 'DropOffNotes',
             'Requester/Id', 'Requester/Title', 'Requester/EMail',
-            'Property/Id', 'Property/Title',
-            'PickupLocation/Id', 'PickupLocation/Title',
-            'DropOffLocation/Id', 'DropOffLocation/Title',
             'VehicleTypeRequested/Id', 'VehicleTypeRequested/Title',
           )
-          .expand(
-            'Requester', 'Property', 'PickupLocation', 'DropOffLocation',
-            'VehicleTypeRequested',
-          )
+          .expand('Requester', 'VehicleTypeRequested')
           .filter(filter)
           .top(50)();
 
@@ -91,8 +88,6 @@ export class OfferService implements IOfferService {
           cards.push({
             offer,
             request,
-            pickupName: request.pickupLocation?.title ?? '',
-            dropOffName: request.dropOffLocation?.title ?? '',
             requesterName: request.requester?.title ?? '',
             // THE OFFER CARD DELIBERATELY OMITS THE REQUESTER'S PHONE NUMBER
             // UNTIL THE DRIVER ACCEPTS.

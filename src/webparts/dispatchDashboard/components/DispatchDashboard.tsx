@@ -28,6 +28,7 @@ import {
 import {
   IDispatchSnapshot,
   IDriver,
+  IProperty,
   IRideOffer,
   ITransportRequest,
   ITripCard,
@@ -38,11 +39,9 @@ import {
   vehicleState,
 } from '../../../common/models';
 import {
-  assessDriver,
-  IEligibilityInput,
-  REASON_TEXT,
-  tripWindow,
-} from '../../../common/rules/eligibility';
+  explainPairIneligibility,
+  IEligibilityContext,
+} from '../../../common/rules/dispatchRules';
 import { ICurrentUser, IServices } from '../../../common/services/IServices';
 import {
   formatDateTime,
@@ -88,7 +87,25 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
   const [cancelTarget, setCancelTarget] = React.useState<ITransportRequest | undefined>();
   const [busy, setBusy] = React.useState(false);
 
-  const propertyIds = user?.propertyIds ?? [];
+  /**
+   * The property filter.
+   *
+   * It is a CONTROL, not a scope. Every Coordinator now sees every request by
+   * default: with one driver pool, a request scoped to a property would be
+   * invisible to everyone else, and if that Coordinator were on leave an
+   * escalation could sit unseen. Narrowing is a choice the Coordinator makes,
+   * not something their account does to them.
+   */
+  const [propertyFilter, setPropertyFilter] = React.useState<number | undefined>();
+  const [properties, setProperties] = React.useState<IProperty[]>([]);
+
+  React.useEffect(() => {
+    if (!services) return;
+    services.master
+      .getProperties()
+      .then(setProperties)
+      .catch(() => setProperties([]));
+  }, [services]);
 
   const load = React.useCallback(async (): Promise<void> => {
     if (!services) return;
@@ -103,20 +120,14 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
       // solved with a flow - the eligibility rules live in one place only.
       await services.dispatch.sweepPendingBroadcasts();
 
-      const result = await services.dispatch.getSnapshot(
-        propertyIds,
-        period.from,
-        period.to,
-      );
+      const result = await services.dispatch.getSnapshot(period.from, period.to);
       setSnapshot(result);
     } catch (e) {
       setError(e);
     } finally {
       setLoading(false);
     }
-    // propertyIds is derived from the signed-in user and is stable for the
-    // session, so joining it is a safe dependency key.
-  }, [services, period.from, period.to, propertyIds]);
+  }, [services, period.from, period.to]);
 
   React.useEffect(() => {
     if (!services) {
@@ -134,17 +145,23 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
   // Counter filtering
   // ---------------------------------------------------------------------------
 
+  const inProperty = React.useCallback(
+    (r?: ITransportRequest): boolean =>
+      propertyFilter === undefined || r?.property?.id === propertyFilter,
+    [propertyFilter],
+  );
+
   const visibleTrips: ITripCard[] = React.useMemo(() => {
     if (!snapshot) return [];
     if (activeCounter === 'pending') return [];
-    return snapshot.ongoingTrips;
-  }, [snapshot, activeCounter]);
+    return snapshot.ongoingTrips.filter((t) => inProperty(t.request));
+  }, [snapshot, activeCounter, inProperty]);
 
   const visibleRequests: ITransportRequest[] = React.useMemo(() => {
     if (!snapshot) return [];
     if (activeCounter === 'ongoing') return [];
-    return snapshot.pendingRequests;
-  }, [snapshot, activeCounter]);
+    return snapshot.pendingRequests.filter(inProperty);
+  }, [snapshot, activeCounter, inProperty]);
 
   // ---------------------------------------------------------------------------
   // Actions
@@ -213,12 +230,12 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
       render: (c) => <Reference>{c.request?.requestId ?? c.trip.tripId}</Reference>,
       width: '120px',
     },
-    { key: 'pickup', label: 'Pickup', render: (c) => c.pickupName, filterValue: (c) => c.pickupName },
+    { key: 'pickup', label: 'Pickup', render: (c) => c.request.pickupText, filterValue: (c) => c.request.pickupText },
     {
       key: 'destination',
       label: 'Destination',
-      render: (c) => c.dropOffName,
-      filterValue: (c) => c.dropOffName,
+      render: (c) => c.request.dropOffText,
+      filterValue: (c) => c.request.dropOffText,
     },
     {
       key: 'driver',
@@ -338,7 +355,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
         if (open.length === 0) return <span className={styles.currentTask}>None</span>;
         return (
           <span>
-            {open.map((t) => t.dropOffName).join(', ')}
+            {open.map((t) => t.request.dropOffText).join(', ')}
             <span className={styles.currentTask}> ({open.length} open)</span>
           </span>
         );
@@ -389,7 +406,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
         return open.length === 0 ? (
           <span className={styles.currentTask}>None</span>
         ) : (
-          <span>{open.map((t) => t.dropOffName).join(', ')}</span>
+          <span>{open.map((t) => t.request.dropOffText).join(', ')}</span>
         );
       },
     },
@@ -448,6 +465,23 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
       {counters ? (
         <div className={styles.section}>
           <div className={styles.periodRow}>
+            <span className={styles.periodLabel}>Property:</span>
+            <Select
+              value={propertyFilter === undefined ? '' : String(propertyFilter)}
+              onChange={(e) =>
+                setPropertyFilter(e.target.value ? parseInt(e.target.value, 10) : undefined)
+              }
+              aria-label="Narrow the dashboard to one property"
+              style={{ width: 'auto' }}
+            >
+              <option value="">All properties</option>
+              {properties.map((pr) => (
+                <option key={pr.id} value={pr.id}>
+                  {pr.title}
+                </option>
+              ))}
+            </Select>
+
             <span className={styles.periodLabel}>Completed counter period:</span>
             <Select
               value={`${period.from.toISOString()}`}
@@ -732,65 +766,72 @@ function AssignmentPanel({ request, snapshot, offers, busy, onClose, onAssign }:
     reason?: string,
   ) => Promise<void>;
 }): JSX.Element {
-  const [driverId, setDriverId] = React.useState<number | undefined>();
+  /**
+   * ONE CHOICE, NOT TWO.
+   *
+   * The pairing is permanent: a driver owns a vehicle, recorded on
+   * VehicleMaster.DefaultDriver. Offering the Coordinator separate driver and
+   * vehicle lists would let them pair driver A with vehicle B and quietly
+   * break the invariant the whole engine now rests on. So the panel lists
+   * PAIRS, and picking one sets both.
+   */
   const [vehicleId, setVehicleId] = React.useState<number | undefined>();
   const [reason, setReason] = React.useState('');
 
-  const window_ = React.useMemo(() => tripWindow(request), [request]);
+  const windowFrom = request.requiredDateTime;
+  const windowTo = request.returnDateTime
+    ? request.returnDateTime
+    : new Date(windowFrom.getTime() + 2 * 3600000);
 
   const openTrips = React.useMemo(
     () => snapshot.ongoingTrips.map((t) => t.trip),
     [snapshot.ongoingTrips],
   );
 
-  const verdicts = React.useMemo(() => {
-    const input: IEligibilityInput = {
-      request,
-      window: window_,
-      drivers: snapshot.drivers,
-      driverProperties: new Map<number, number[]>(),
+  const driversById = React.useMemo(() => {
+    const map = new Map<number, IDriver>();
+    snapshot.drivers.forEach((d) => map.set(d.id, d));
+    return map;
+  }, [snapshot.drivers]);
+
+  const ctx: IEligibilityContext = React.useMemo(
+    () => ({
+      driversById,
+      // The dashboard snapshot does not carry availability blocks, so a block
+      // cannot be seen here. The Coordinator is overriding deliberately
+      // anyway, and the reason is recorded on the trip.
       blocks: [],
       openTrips,
-      vehicles: snapshot.vehicles,
-    };
-    const map = new Map<number, string[]>();
-    snapshot.drivers.forEach((d) => {
-      // Vehicle availability is assessed separately below, so the per-driver
-      // verdict here is about the driver alone.
-      const v = assessDriver(d, input, true);
-      map.set(
-        d.id,
-        v.reasons
-          .filter((r) => r !== 'not-allocated-to-property')
-          .map((r) => REASON_TEXT[r]),
-      );
-    });
-    return map;
-  }, [request, window_, snapshot.drivers, snapshot.vehicles, openTrips]);
+      windowTo,
+      ruleMaxConcurrent: 1,
+    }),
+    [driversById, openTrips, windowTo],
+  );
 
-  const busyVehicleIds = React.useMemo(() => {
-    const set = new Set<number>();
-    openTrips.forEach((t) => {
-      if (t.vehicle) set.add(t.vehicle.id);
-    });
-    return set;
-  }, [openTrips]);
+  /** Every vehicle with its permanent driver, and why it may not be usable. */
+  const candidates = React.useMemo(
+    () =>
+      snapshot.vehicles.map((v) => ({
+        vehicle: v,
+        driver: driversById.get(v.defaultDriver?.id ?? -1),
+        problems: explainPairIneligibility(v, ctx),
+      })),
+    [snapshot.vehicles, driversById, ctx],
+  );
 
   const requestedTypeId = request.vehicleTypeRequested?.id;
+  const chosen = candidates.filter((c) => c.vehicle.id === vehicleId)[0];
 
-  const driverProblems = driverId ? (verdicts.get(driverId) ?? []) : [];
-  const selectedVehicle = snapshot.vehicles.filter((v) => v.id === vehicleId)[0];
-  const vehicleWrongType =
-    selectedVehicle !== undefined &&
+  const wrongType =
+    chosen !== undefined &&
     requestedTypeId !== undefined &&
-    selectedVehicle.vehicleType?.id !== requestedTypeId;
-  const vehicleBusy = vehicleId !== undefined && busyVehicleIds.has(vehicleId);
+    chosen.vehicle.vehicleType?.id !== requestedTypeId;
 
-  const isOverride =
-    driverProblems.length > 0 || vehicleWrongType || vehicleBusy;
+  const isOverride = chosen !== undefined && (chosen.problems.length > 0 || wrongType);
+  const driverId = chosen?.driver?.id;
   const canAssign =
+    chosen !== undefined &&
     driverId !== undefined &&
-    vehicleId !== undefined &&
     (!isOverride || reason.trim().length > 0);
 
   const declined = offers.filter((o) => o.responseStatus === 'Rejected');
@@ -801,7 +842,7 @@ function AssignmentPanel({ request, snapshot, offers, busy, onClose, onAssign }:
         <div>
           <SectionHeading>Assign {request.requestId}</SectionHeading>
           <span className={styles.choiceMeta}>
-            {request.pickupLocation?.title} &rarr; {request.dropOffLocation?.title}{' '}
+            {request.pickupText} &rarr; {request.dropOffText}{' '}
             &middot; {formatDateTime(request.requiredDateTime)} &middot;{' '}
             {request.vehicleTypeRequested?.title}
             {request.otherVehicleText ? ` (${request.otherVehicleText})` : ''}
@@ -837,69 +878,39 @@ function AssignmentPanel({ request, snapshot, offers, busy, onClose, onAssign }:
 
       <div className={styles.assignGrid}>
         <div>
-          <FormRow label="Driver" required>
-            <div className={styles.choiceList} role="listbox" aria-label="Eligible drivers">
-              {snapshot.drivers.map((d) => {
-                const problems = verdicts.get(d.id) ?? [];
+          <FormRow label="Driver and vehicle" required>
+            <div className={styles.choiceList} role="listbox" aria-label="Driver and vehicle pairs">
+              {candidates.map((c) => {
+                const label = c.driver
+                  ? `${c.driver.driverName} \u2014 ${c.vehicle.plateNo}`
+                  : `${c.vehicle.plateNo} \u2014 no assigned driver`;
+                const notes: string[] = c.problems.slice();
+                if (
+                  requestedTypeId !== undefined &&
+                  c.vehicle.vehicleType?.id !== requestedTypeId
+                ) {
+                  notes.push(`different vehicle type (${c.vehicle.vehicleType?.title ?? 'none'})`);
+                }
                 return (
                   <button
-                    key={d.id}
+                    key={c.vehicle.id}
                     type="button"
                     role="option"
-                    aria-selected={driverId === d.id}
+                    aria-selected={vehicleId === c.vehicle.id}
+                    disabled={!c.driver}
                     className={[
                       styles.choice,
-                      driverId === d.id ? styles.choiceSelected : '',
+                      vehicleId === c.vehicle.id ? styles.choiceSelected : '',
                     ].join(' ')}
-                    onClick={() => setDriverId(d.id)}
+                    onClick={() => setVehicleId(c.vehicle.id)}
                   >
                     <span>
-                      {d.driverName}
+                      {label}
                       <span className={styles.choiceMeta}>
-                        {problems.length === 0
-                          ? ' · eligible'
-                          : ` · ${problems.join('; ')}`}
+                        {notes.length === 0 ? ' \u00B7 eligible' : ` \u00B7 ${notes.join('; ')}`}
                       </span>
                     </span>
-                    <Badge state={driverState(d.status)} label={d.status} />
-                  </button>
-                );
-              })}
-            </div>
-          </FormRow>
-        </div>
-
-        <div>
-          <FormRow label="Vehicle" required>
-            <div className={styles.choiceList} role="listbox" aria-label="Available vehicles">
-              {snapshot.vehicles.map((v) => {
-                const wrongType =
-                  requestedTypeId !== undefined && v.vehicleType?.id !== requestedTypeId;
-                const occupied = busyVehicleIds.has(v.id);
-                const notes: string[] = [];
-                if (wrongType) notes.push('different vehicle type');
-                if (occupied) notes.push('on an open trip');
-
-                return (
-                  <button
-                    key={v.id}
-                    type="button"
-                    role="option"
-                    aria-selected={vehicleId === v.id}
-                    className={[
-                      styles.choice,
-                      vehicleId === v.id ? styles.choiceSelected : '',
-                    ].join(' ')}
-                    onClick={() => setVehicleId(v.id)}
-                  >
-                    <span>
-                      {v.plateNo}
-                      <span className={styles.choiceMeta}>
-                        {` · ${v.vehicleType?.title ?? 'no type'}`}
-                        {notes.length > 0 ? ` · ${notes.join('; ')}` : ''}
-                      </span>
-                    </span>
-                    <Badge state={vehicleState(v.status)} label={v.status} />
+                    <Badge state={vehicleState(c.vehicle.status)} label={c.vehicle.status} />
                   </button>
                 );
               })}

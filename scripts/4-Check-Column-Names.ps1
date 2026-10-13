@@ -34,7 +34,9 @@ Connect-PnPOnline -Url $SiteUrl -Interactive
 # DispatchService.ts - if you change a name there, change it here too.
 $EXPECTED = [ordered]@{
     'TransportRequests' = @(
-        'Title','RequestType','Requester','Property','PickupLocation','DropOffLocation',
+        'Title','RequestType','Requester','Property',
+        'PickupText','PickupPlaceId','PickupLat','PickupLng','PickupNotes',
+        'DropOffText','DropOffPlaceId','DropOffLat','DropOffLng','DropOffNotes',
         'RequiredDateTime','ReturnDateTime','NoOfPax','VehicleTypeRequested',
         'OtherVehicleText','ItemDescription','ItemNotes','Priority','ReqStatus',
         'OfferClosesAt','ReleaseAt','AcceptedTrip','Remarks','RejectionReason',
@@ -63,14 +65,13 @@ $EXPECTED = [ordered]@{
         'DefaultDriver','PropertyRef','VehStatus','IsActive'
     )
     'VehicleTypes'       = @('Title','SuitableFor','Capacity','SortOrder','IsActive')
-    'Locations'          = @('Title','Property','Address','Latitude','Longitude','Category','IsActive')
     'AllocationRules'    = @(
         'Title','Property','RequestType','Mode','OfferWindowMinutes',
         'MaxConcurrentTripsPerDriver','AdvanceReleaseHours','IsActive',
-        'NotifyEnRoute','NotifyInTransit'
+        'NotifyEnRoute','NotifyInTransit',
+        'OperatingCentreLat','OperatingCentreLng','OperatingRadiusKm'
     )
     'AvailabilityBlocks' = @('Title','Driver','Vehicle','FromDateTime','ToDateTime','BlockType','Property','Notes')
-    'DLClientMaster'     = @('DriverID','PropertyRef','PropertyAllocation')
     'PropertyMaster'     = @('Title')
     'Templates'          = @('Title','Language','Subject','Body','IsActive')
 }

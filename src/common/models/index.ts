@@ -14,7 +14,6 @@ import {
   BlockType,
   DriverStatus,
   ItemDescription,
-  LocationCategory,
   NotificationOutcome,
   OfferResponseStatus,
   Priority,
@@ -66,17 +65,6 @@ export interface IVehicleType extends IListItemBase {
   isActive: boolean;
 }
 
-export interface ILocation extends IListItemBase {
-  title: string;
-  property?: ILookup;
-  address?: string;
-  /** Present from day one, unpopulated. Phase 2 geocoding needs no migration. */
-  latitude?: number;
-  longitude?: number;
-  category?: LocationCategory;
-  isActive: boolean;
-}
-
 export interface IDriver extends IListItemBase {
   driverName: string;
   /** Identity for login, for offers, and for the Accept check. */
@@ -119,6 +107,15 @@ export interface IAllocationRule extends IListItemBase {
   /** Volume discipline: a two-minute internal transfer needs one e-mail. */
   notifyEnRoute: boolean;
   notifyInTransit: boolean;
+
+  /**
+   * The operating area. This is what replaced property scoping: a pickup
+   * further than the radius from the centre is not broadcast at all, it goes
+   * straight to the Coordinator.
+   */
+  operatingCentreLat?: number;
+  operatingCentreLng?: number;
+  operatingRadiusKm?: number;
 }
 
 export interface IAvailabilityBlock extends IListItemBase {
@@ -133,12 +130,6 @@ export interface IAvailabilityBlock extends IListItemBase {
   notes?: string;
 }
 
-/** A driver's property allocation. A driver may appear more than once. */
-export interface IDriverPropertyLink extends IListItemBase {
-  driver?: ILookup;
-  property?: ILookup;
-}
-
 // -----------------------------------------------------------------------------
 // Dispatch
 // -----------------------------------------------------------------------------
@@ -147,9 +138,33 @@ export interface ITransportRequest extends IListItemBase {
   requestId: string;
   requestType: RequestType;
   requester?: IPerson;
+  /**
+   * Still written at booking from the requester's profile, FOR REPORTING ONLY.
+   * It no longer affects who is offered the trip - allocation ignores property
+   * entirely since the single-pool change.
+   */
   property?: ILookup;
-  pickupLocation?: ILookup;
-  dropOffLocation?: ILookup;
+
+  // --- Where the trip runs -------------------------------------------------
+  // Free coordinates from a live map search, not a lookup into a list. A
+  // requester can pick any place in the UAE.
+  pickupText: string;
+  pickupPlaceId?: string;
+  pickupLat?: number;
+  pickupLng?: number;
+  /**
+   * "Gate 2, by the security hut". NOT an optional extra: a list entry called
+   * "Khalifa Plant Gate 2" told a driver which gate; a pin labelled "KIZAD,
+   * Abu Dhabi" does not. Shown on the booking form and on both driver cards.
+   */
+  pickupNotes?: string;
+
+  dropOffText: string;
+  dropOffPlaceId?: string;
+  dropOffLat?: number;
+  dropOffLng?: number;
+  dropOffNotes?: string;
+
   requiredDateTime: Date;
   returnDateTime?: Date;
   noOfPax?: number;
@@ -253,8 +268,6 @@ export interface IRequestWithTrip {
 export interface IOfferCard {
   offer: IRideOffer;
   request: ITransportRequest;
-  pickupName: string;
-  dropOffName: string;
   requesterName: string;
   /** Omitted until the driver accepts. */
   requesterPhone?: string;
@@ -266,8 +279,6 @@ export interface IOfferCard {
 export interface ITripCard {
   trip: ITripAssignment;
   request: ITransportRequest;
-  pickupName: string;
-  dropOffName: string;
   requesterName: string;
   requesterPhone?: string;
   vehiclePlate: string;

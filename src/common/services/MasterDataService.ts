@@ -11,7 +11,7 @@ import {
   IAllocationRule,
   IAvailabilityBlock,
   IDriver,
-  ILocation,
+  IProperty,
   IVehicle,
   IVehicleType,
   RequestType,
@@ -19,21 +19,19 @@ import {
 import { toIso } from '../utils/dates';
 import { IMasterDataService } from './IServices';
 import {
-  EXPAND_ALLOCATION_RULE,
   EXPAND_BLOCK,
   EXPAND_DRIVER,
-  EXPAND_LOCATION,
   EXPAND_VEHICLE,
   SELECT_ALLOCATION_RULE,
+  SELECT_PROPERTY,
   SELECT_BLOCK,
   SELECT_DRIVER,
-  SELECT_LOCATION,
   SELECT_VEHICLE,
   SELECT_VEHICLE_TYPE,
   toAllocationRule,
   toAvailabilityBlock,
   toDriver,
-  toLocation,
+  toProperty,
   toVehicle,
   toVehicleType,
 } from './mappers';
@@ -41,20 +39,10 @@ import { getSP, guard } from './SPContext';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-/** `Property/Id eq 1 or Property/Id eq 2`, or '' for no scoping. */
-function scopeFilter(field: string, propertyIds?: number[]): string {
-  if (!propertyIds || propertyIds.length === 0) return '';
-  return propertyIds.map((id) => `${field} eq ${id}`).join(' or ');
-}
-
-function and(...clauses: string[]): string {
-  const parts = clauses.filter((c) => c.length > 0).map((c) => `(${c})`);
-  return parts.join(' and ');
-}
 
 export class MasterDataService implements IMasterDataService {
   private vehicleTypes?: IVehicleType[];
-  private locations = new Map<string, ILocation[]>();
+  private properties?: IProperty[];
   private drivers = new Map<string, IDriver[]>();
   private vehicles = new Map<string, IVehicle[]>();
   private rules?: IAllocationRule[];
@@ -62,11 +50,36 @@ export class MasterDataService implements IMasterDataService {
 
   public clearCache(): void {
     this.vehicleTypes = undefined;
-    this.locations.clear();
+    this.properties = undefined;
     this.drivers.clear();
     this.vehicles.clear();
     this.rules = undefined;
     this.driverProperties = undefined;
+  }
+
+  /**
+   * Every property, for the Dispatch Dashboard's filter control.
+   *
+   * This is the ONLY remaining use of PropertyMaster in the solution: a label
+   * the Coordinator can choose to narrow the view by. It does not scope
+   * anything on its own.
+   */
+  public async getProperties(): Promise<IProperty[]> {
+    if (this.properties) return this.properties;
+
+    return guard(
+      'The property list could not be loaded.',
+      'Refresh the page. The dashboard still works without it; you just cannot filter by property.',
+      async () => {
+        const rows: any[] = await getSP()
+          .web.lists.getByTitle(LIST.propertyMaster)
+          .items.select(...SELECT_PROPERTY)
+          .orderBy('Title', true)
+          .top(200)();
+        this.properties = rows.map(toProperty);
+        return this.properties;
+      },
+    );
   }
 
   public async getVehicleTypes(): Promise<IVehicleType[]> {
@@ -99,37 +112,8 @@ export class MasterDataService implements IMasterDataService {
     return all.filter((t) => t.suitableFor.indexOf(requestType) !== -1);
   }
 
-  public async getLocations(propertyId?: number): Promise<ILocation[]> {
-    const key = String(propertyId ?? 'all');
-    const hit = this.locations.get(key);
-    if (hit) return hit;
-
-    return guard(
-      'The list of destinations could not be loaded.',
-      'Refresh the page. If no destinations appear, ask a Fleet Admin to check Locations.',
-      async () => {
-        const filter = and(
-          'IsActive eq 1',
-          propertyId !== undefined ? `Property/Id eq ${propertyId}` : '',
-        );
-
-        const rows: any[] = await getSP()
-          .web.lists.getByTitle(LIST.locations)
-          .items.select(...SELECT_LOCATION)
-          .expand(...EXPAND_LOCATION)
-          .filter(filter)
-          .orderBy('Title', true)
-          .top(500)();
-
-        const mapped = rows.map(toLocation);
-        this.locations.set(key, mapped);
-        return mapped;
-      },
-    );
-  }
-
-  public async getDrivers(propertyIds?: number[]): Promise<IDriver[]> {
-    const key = (propertyIds ?? []).join(',') || 'all';
+  public async getDrivers(): Promise<IDriver[]> {
+    const key = 'all';
     const hit = this.drivers.get(key);
     if (hit) return hit;
 
@@ -137,10 +121,9 @@ export class MasterDataService implements IMasterDataService {
       'The driver list could not be loaded.',
       'Refresh the page. If it keeps failing, contact a Fleet Admin.',
       async () => {
-        const filter = and(
-          'IsActive eq 1',
-          scopeFilter('HomeProperty/Id', propertyIds),
-        );
+        // No property filter. There is one driver pool now - HomeProperty is
+        // informational only.
+        const filter = 'IsActive eq 1';
 
         const rows: any[] = await getSP()
           .web.lists.getByTitle(LIST.driversMaster)
@@ -157,8 +140,8 @@ export class MasterDataService implements IMasterDataService {
     );
   }
 
-  public async getVehicles(propertyIds?: number[]): Promise<IVehicle[]> {
-    const key = (propertyIds ?? []).join(',') || 'all';
+  public async getVehicles(): Promise<IVehicle[]> {
+    const key = 'all';
     const hit = this.vehicles.get(key);
     if (hit) return hit;
 
@@ -166,10 +149,8 @@ export class MasterDataService implements IMasterDataService {
       'The vehicle list could not be loaded.',
       'Refresh the page. If it keeps failing, contact a Fleet Admin.',
       async () => {
-        const filter = and(
-          "VehStatus ne 'Retired'",
-          scopeFilter('PropertyRef/Id', propertyIds),
-        );
+        // PropertyRef is informational now; it no longer narrows the pool.
+        const filter = "VehStatus ne 'Retired'";
 
         const rows: any[] = await getSP()
           .web.lists.getByTitle(LIST.vehicleMaster)
@@ -187,7 +168,6 @@ export class MasterDataService implements IMasterDataService {
   }
 
   public async getAllocationRule(
-    propertyId: number,
     requestType: RequestType,
   ): Promise<IAllocationRule | undefined> {
     if (!this.rules) {
@@ -198,17 +178,15 @@ export class MasterDataService implements IMasterDataService {
           const rows: any[] = await getSP()
             .web.lists.getByTitle(LIST.allocationRules)
             .items.select(...SELECT_ALLOCATION_RULE)
-            .expand(...EXPAND_ALLOCATION_RULE)
-            .filter('IsActive eq 1')
+                .filter('IsActive eq 1')
             .top(200)();
           return rows.map(toAllocationRule);
         },
       );
     }
 
-    return this.rules.filter(
-      (r) => r.property?.id === propertyId && r.requestType === requestType,
-    )[0];
+    // Keyed on request type alone now that property scoping is gone.
+    return this.rules.filter((r) => r.requestType === requestType)[0];
   }
 
   public async getBlocks(from: Date, to: Date): Promise<IAvailabilityBlock[]> {
@@ -231,40 +209,4 @@ export class MasterDataService implements IMasterDataService {
     );
   }
 
-  /**
-   * Driver id -> property ids, from DLClientMaster.
-   *
-   * A driver may be allocated across more than one property, which is exactly
-   * why scoping is derived from this list rather than from SharePoint groups.
-   */
-  public async getDriverPropertyMap(): Promise<Map<number, number[]>> {
-    if (this.driverProperties) return this.driverProperties;
-
-    const map = new Map<number, number[]>();
-    try {
-      const rows: any[] = await getSP()
-        .web.lists.getByTitle(LIST.dlClientMaster)
-        .items.select('Id', 'DriverID/Id', 'PropertyRef/Id')
-        .expand('DriverID', 'PropertyRef')
-        .top(2000)();
-
-      rows.forEach((r) => {
-        const d = r.DriverID?.Id;
-        const p = r.PropertyRef?.Id;
-        if (typeof d !== 'number' || typeof p !== 'number') return;
-        const existing = map.get(d) ?? [];
-        if (existing.indexOf(p) === -1) existing.push(p);
-        map.set(d, existing);
-      });
-    } catch {
-      console.warn(
-        '[FleetPortal] DLClientMaster could not be read with the assumed ' +
-          'column names (Driver, Property). Confirm the internal names before ' +
-          'go-live - see SharePoint-Lists-Specification.txt section 2.',
-      );
-    }
-
-    this.driverProperties = map;
-    return map;
-  }
 }

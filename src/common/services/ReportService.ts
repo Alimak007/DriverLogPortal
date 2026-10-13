@@ -418,7 +418,11 @@ export class ReportService implements IReportService {
           const hour = Math.floor((r.requiredDateTime.getTime() - from.getTime()) / 3600000);
           const agg = byHour.get(hour) ?? { count: 0, routes: new Map<string, number>() };
           agg.count += 1;
-          const route = `${r.pickupLocation?.title ?? '?'} to ${r.dropOffLocation?.title ?? '?'}`;
+          // OPEN QUESTION 3: free-text destinations barely group. Two people
+          // typing the same place get two different strings, so this report is
+          // now low value. Left in place deliberately; the eventual fix is
+          // clustering on the coordinates, which is NOT attempted here.
+          const route = `${r.pickupText || '?'} to ${r.dropOffText || '?'}`;
           agg.routes.set(route, (agg.routes.get(route) ?? 0) + 1);
           byHour.set(hour, agg);
         });
