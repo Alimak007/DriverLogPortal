@@ -86,6 +86,24 @@ export const Button: React.FC<IButtonProps> = ({
   </button>
 );
 
+/**
+ * A link that looks like a button. For going to ANOTHER PAGE - it is a real
+ * anchor, so it can be opened in a new tab and is announced as a link.
+ */
+export const LinkButton: React.FC<{
+  href: string;
+  kind?: ButtonKind;
+  className?: string;
+  children: React.ReactNode;
+}> = ({ href, kind = 'secondary', className, children }) => (
+  <a
+    href={href}
+    className={[KIND_CLASS[kind], styles.btnLink, className ?? ''].filter(Boolean).join(' ')}
+  >
+    {children}
+  </a>
+);
+
 // -----------------------------------------------------------------------------
 // Badges
 // -----------------------------------------------------------------------------

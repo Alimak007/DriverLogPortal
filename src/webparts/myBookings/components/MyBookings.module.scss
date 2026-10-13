@@ -1,53 +1,212 @@
 @import '../../../common/styles/tokens';
 
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: $gap-lg;
-}
+// =============================================================================
+// My Bookings
+// =============================================================================
+// Two cards in the style of the booking screens: a brown header naming the
+// card, a cream body. History on the left, the selected booking on the right;
+// on a narrow screen they stack.
 
 .split {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
   gap: $gap-lg;
   align-items: start;
 
-  @media (max-width: 960px) {
+  @media (max-width: 1100px) {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
-.detailPanel {
-  @include panel;
+.bookingCard {
+  background: $brand-light;
+  border: 1px solid $border;
+  border-radius: 20px;
+  box-shadow: $shadow-container;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.detailCard {
   position: sticky;
   top: $gap-md;
+
+  @media (max-width: 1100px) {
+    position: static;
+  }
 }
+
+.bookingCardHeader {
+  display: flex;
+  align-items: center;
+  gap: $gap-md;
+  background: $brand-dark;
+  color: $white;
+  padding: 16px 20px;
+}
+
+.bookingCardTitle {
+  font-family: $font-heading;
+  font-size: 18px;
+  font-weight: $weight-heading;
+  color: $white;
+  margin: 0;
+}
+
+.bookingCardBody {
+  padding: 18px;
+
+  @media (max-width: $bp-mobile) {
+    padding: 12px;
+  }
+}
+
+.emptyAction { margin-top: $gap-md; }
+
+// -----------------------------------------------------------------------------
+// Booking detail
+// -----------------------------------------------------------------------------
 
 .detailHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: $gap-sm;
-  margin-bottom: $gap-md;
   flex-wrap: wrap;
+  font-family: $font-body;
+  font-size: $size-caption;
+  color: $muted;
+  margin-bottom: $gap-md;
 }
 
-.detailGrid {
+// Where the trip has got to, in words. The green is a tint behind dark text.
+.statusBanner {
+  display: flex;
+  align-items: center;
+  gap: $gap-md;
+  background: #DDF5E3;
+  border-radius: $radius-card;
+  padding: 12px 14px;
+  margin-bottom: $gap-md;
+  font-family: $font-body;
+  color: #1F1F1F;
+}
+
+.statusBannerIcon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: $radius-field;
+  background: $white;
+  color: #1E7B46;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statusBannerText {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  min-width: 0;
+  font-size: $size-table-cell;
+
+  strong {
+    font-family: $font-heading;
+    font-size: 15px;
+    font-weight: $weight-heading;
+  }
+}
+
+.infoList {
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  padding: 2px 14px;
   margin-bottom: $gap-md;
 }
 
-.divider {
-  border: none;
-  border-top: 1px solid $border;
-  margin: $gap-md 0;
+.infoRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 0;
+  font-family: $font-body;
+  font-size: $size-caption;
+  color: $brand-dark;
+
+  &:not(:last-child) { border-bottom: 1px solid $border; }
 }
 
-.detailActions {
-  display: flex;
-  gap: $gap-sm;
-  flex-wrap: wrap;
-  margin-top: $gap-md;
+.infoIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: $brand-dark;
+  padding-top: 1px;
+}
+
+.infoLabel {
+  flex: 0 0 96px;
+  color: $muted;
+}
+
+.infoValue {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.infoSub {
+  display: block;
+  font-size: $size-hint;
+  font-weight: $weight-body;
+  color: $muted;
+
+  a { color: inherit; }
+}
+
+.callButton {
+  @include focus-ring;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: $radius-badge;
+  background: $brand-mid;
+  color: $brand-dark;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: background-color $transition;
+
+  &:hover { background: $brand-tint; }
+}
+
+.subHeading {
+  font-family: $font-heading;
+  font-size: 15px;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+  margin: $gap-lg 0 $gap-sm;
+}
+
+.progressCard {
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  padding: 16px 16px 0;
+}
+
+.detailActions { margin-top: $gap-lg; }
+
+// The cancel action runs the width of the card, outlined in red.
+.cancelButton {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 12px;
+  border: 1px solid $status-red;
+  background: $white;
+  font-weight: $weight-heading;
+
+  &:hover:not(:disabled) { background: #FDF1F1; }
 }

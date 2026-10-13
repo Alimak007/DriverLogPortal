@@ -86,6 +86,16 @@ export interface IAppConfig {
    */
   liveTrackingEnabled: boolean;
 
+  /**
+   * Where the requester's two pages live, RELATIVE TO THE SITE the web part is
+   * running on. The web parts link to each other with these, so moving or
+   * renaming a page is a change here and nowhere else.
+   */
+  pages: {
+    bookARide: string;
+    myBookings: string;
+  };
+
 }
 
 export const APP_CONFIG: IAppConfig = {
@@ -109,5 +119,10 @@ export const APP_CONFIG: IAppConfig = {
   maxReportRangeMonths: 12,
 
   liveTrackingEnabled: false,
+
+  pages: {
+    bookARide: '/SitePages/Home.aspx',
+    myBookings: '/SitePages/MyBookings.aspx',
+  },
 
 };

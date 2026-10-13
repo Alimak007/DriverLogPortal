@@ -1,150 +1,580 @@
 @import '../../../common/styles/tokens';
 
+// =============================================================================
+// Book a Ride
+// =============================================================================
+// Each of the seven screens is one CARD: a brown header naming the screen, a
+// cream body, and the next action across the bottom. It is sized like a phone
+// screen and centred, so the wizard looks the same on a handset and a desktop.
+
+$card-width: 480px;
+$tap: 46px;              // The height of every primary action
+
 .wizard {
-  max-width: 760px;
+  max-width: $card-width;
   margin: 0 auto;
 }
 
-// The step indicator. Carries the step NUMBER and NAME, not just a tint, so
-// progress is never conveyed by colour alone.
-.steps {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: $gap-lg;
-  flex-wrap: wrap;
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.step {
+// -----------------------------------------------------------------------------
+// Step indicator
+// -----------------------------------------------------------------------------
+// The numbered chip from the design reference, with a seven-part rail beneath
+// it. The step's name is always written out, so progress is never conveyed by
+// colour alone.
+
+.steps { margin-bottom: $gap-md; }
+
+.stepChip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-family: $font-body;
-  font-size: $size-hint;
-  color: $muted;
-}
-
-.stepDot {
-  width: 22px;
-  height: 22px;
+  gap: $gap-md;
+  background: $brand-light;
+  border: 1px solid rgba($brand-dark, 0.45);
   border-radius: $radius-badge;
-  border: 1px solid $border;
-  background: $white;
-  color: $muted;
+  padding: 6px 22px 6px 6px;
+}
+
+.stepNumber {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: $radius-badge;
+  background: $brand-dark;
+  color: $white;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: $weight-badge;
+  font-family: $font-heading;
+  font-size: 24px;
+  font-weight: $weight-heading;
 }
 
-.stepCurrent {
+.stepChipText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stepNowTitle {
+  font-family: $font-heading;
+  font-size: 16px;
+  font-weight: $weight-heading;
   color: $brand-dark;
-  font-weight: $weight-caption;
-
-  .stepDot {
-    background: $brand-dark;
-    border-color: $brand-dark;
-    color: $brand-light;
-  }
 }
 
-.stepDone {
-  .stepDot {
-    background: $state-healthy;
-    border-color: $state-healthy;
-    color: $white;
-  }
-}
-
-.stepSeparator {
-  color: $border;
+.stepNowCaption {
+  font-family: $font-body;
   font-size: $size-hint;
+  line-height: 1.35;
+  color: $brand-dark;
+}
+
+.stepRail {
+  display: flex;
+  gap: 4px;
+  margin: $gap-sm 14px 0;
+}
+
+.stepSegment {
+  flex: 1 1 0;
+  height: 4px;
+  border-radius: $radius-badge;
+  background: $border;
+}
+
+.stepSegmentOn { background: $brand-dark; }
+
+// -----------------------------------------------------------------------------
+// The card
+// -----------------------------------------------------------------------------
+
+.phone {
+  background: $brand-light;
+  border: 1px solid $border;
+  border-radius: 20px;
+  box-shadow: $shadow-container;
+  overflow: hidden;
+}
+
+.phoneHeader {
+  display: flex;
+  align-items: center;
+  gap: $gap-md;
+  background: $brand-dark;
+  color: $white;
+  padding: 16px 20px;
+}
+
+.phoneHeaderIcon { display: inline-flex; }
+
+.phoneTitle {
+  font-family: $font-heading;
+  font-size: 18px;
+  font-weight: $weight-heading;
+  color: $white;
+  margin: 0;
+}
+
+.phoneBody { padding: 18px; }
+
+// Screen 1 runs its backdrop edge to edge, so it pads its own lower half.
+.phoneBodyFlush { padding: 0; }
+
+// The processing screen is white, so its picture sits on a clean ground.
+.phoneBodyPlain { padding: 18px; background: $white; }
+
+.phoneFooter {
+  display: flex;
+  gap: $gap-sm;
+  padding: 0 18px 18px;
+}
+
+.navBack {
+  min-height: $tap;
+  border-radius: 12px;
+  background: $white;
+}
+
+.navNext {
+  flex: 1 1 auto;
+  min-height: $tap;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: $weight-heading;
 }
 
 .screen {
-  @include panel;
-  background: $brand-light;
-}
-
-.screenHeading {
-  @include section-heading;
-  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
 }
 
 .screenCaption {
   @include caption;
-  display: block;
-  margin-bottom: $gap-lg;
+  margin: 0 0 $gap-md;
 }
 
-// Searchable destination picker. A picker over Locations, NEVER a text box -
-// the text input filters the list, it does not become the answer.
+// The actions that close screens 5, 6 and 7.
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: $gap-sm;
+  margin-top: $gap-lg;
+}
+
+.actionWide {
+  width: 100%;
+  min-height: $tap;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: $weight-heading;
+}
+
+// A white card on the cream body.
+.whiteCard {
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  padding: 16px 16px 0;
+  margin-bottom: $gap-md;
+}
+
+// -----------------------------------------------------------------------------
+// Screen 1 - where
+// -----------------------------------------------------------------------------
+// Searchable pickers over Locations, NEVER a text box - the text input filters
+// the list, it does not become the answer.
+
+// The backdrop the pickup card sits on. A drawing, not a live map.
+.mapArea {
+  position: relative;
+  min-height: 210px;
+  overflow: hidden;
+}
+
+.mapArt {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.mapContent {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: $gap-sm;
+  min-height: 210px;
+  padding: 44px 18px 64px 56px;
+
+  @media (max-width: $bp-min) {
+    padding-left: 44px;
+  }
+}
+
+.locationCard {
+  position: relative;
+  align-self: flex-start;
+  max-width: 100%;
+  background: $white;
+  border-radius: $radius-card;
+  box-shadow: 0 6px 18px rgba(55, 35, 25, 0.16);
+  padding: 12px 16px 12px 18px;
+}
+
+// The marker the card points from: a blue dot with a soft halo.
+.locationDot {
+  position: absolute;
+  left: -32px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  border-radius: $radius-badge;
+  background: $white;
+  border: 6px solid #2F6FE4;
+  box-shadow: 0 0 0 7px rgba(47, 111, 228, 0.2);
+  box-sizing: border-box;
+}
+
+.locationText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-family: $font-body;
+  color: $brand-dark;
+}
+
+.locationKicker,
+.locationTitle {
+  font-family: $font-heading;
+  font-size: $size-table-cell;
+  font-weight: $weight-heading;
+  line-height: 1.35;
+  color: #1F1F1F;
+}
+
+.locationAddress {
+  font-size: $size-caption;
+  color: #4A4A4A;
+}
+
+.locateButton {
+  @include focus-ring;
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  width: 46px;
+  height: 46px;
+  border: none;
+  border-radius: $radius-badge;
+  background: $white;
+  color: #1F1F1F;
+  box-shadow: 0 4px 12px rgba(55, 35, 25, 0.2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color $transition;
+
+  &:hover { background: $brand-light; }
+}
+
+// The lower half of the screen.
+.whereTo {
+  display: flex;
+  flex-direction: column;
+  gap: $gap-sm;
+  padding: 16px 18px 18px;
+}
+
+.whereHead {
+  display: flex;
+  align-items: center;
+  gap: $gap-sm;
+}
+
+.wherePin {
+  display: inline-flex;
+  color: #1F1F1F;
+
+  // A solid pin with a white eye, as drawn in the reference.
+  svg { fill: currentColor; }
+  svg circle { fill: $white; stroke: $white; }
+}
+
+.whereTitle {
+  font-family: $font-heading;
+  font-size: 17px;
+  font-weight: $weight-heading;
+  color: #1F1F1F;
+}
+
+.whereError {
+  font-family: $font-body;
+  font-size: $size-hint;
+  font-weight: $weight-caption;
+  color: $status-red;
+}
+
+.whereHint {
+  font-family: $font-body;
+  font-size: $size-hint;
+  color: $muted;
+}
+
 .pickerWrap { position: relative; }
 
+.searchBox {
+  position: relative;
+
+  input {
+    min-height: 44px;
+    padding-right: 54px;
+    box-shadow: 0 1px 3px rgba(55, 35, 25, 0.06);
+  }
+}
+
+// The search mark sits in its own peach box at the end of the field. It is a
+// button: it opens the list, and closes it again.
+.searchIcon {
+  @include focus-ring;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color $transition;
+
+  &:hover { background: $brand-mid; }
+
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  bottom: 4px;
+  width: 38px;
+  border-radius: 8px;
+  background: $brand-tint;
+  border: 1px solid rgba($brand-dark, 0.25);
+  color: $brand-dark;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .pickerList {
-  margin-top: 6px;
-  border: 1px solid $border;
-  border-radius: $radius-field;
-  background: $white;
-  max-height: 240px;
+  margin: 6px 0 0;
+  max-height: 232px;
   overflow: auto;
   list-style: none;
-  padding: 4px;
+  padding: 6px;
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  box-shadow: 0 6px 18px rgba(55, 35, 25, 0.12);
+}
+
+// The destination that has been chosen, shown while its list is closed.
+.pickerChosen {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: $gap-sm;
+  padding: 7px 34px 7px 6px;
+  border-radius: $radius-field;
+  background: $brand-tint;
+  font-family: $font-heading;
+  font-size: $size-table-cell;
+  font-weight: $weight-heading;
+  color: #1F1F1F;
+
+  .checkMark { top: 50%; margin-top: -11px; }
+}
+
+// The pickup's list floats over the backdrop, so it needs a surface.
+.pickerListFloating {
+  margin: 0;
+  border: none;
+  box-shadow: 0 6px 18px rgba(55, 35, 25, 0.16);
+  max-height: 220px;
 }
 
 .pickerOption {
   @include focus-ring;
-  display: block;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   width: 100%;
   text-align: left;
   border: none;
   background: none;
-  font-family: $font-body;
+  font-family: $font-heading;
   font-size: $size-table-cell;
-  color: $brand-dark;
-  padding: 9px 12px;
-  border-radius: $radius-action;
+  font-weight: $weight-heading;
+  color: #1F1F1F;
+  padding: 7px 34px 7px 6px;
+  border-radius: $radius-field;
   cursor: pointer;
+  transition: background-color $transition;
 
-  &:hover { background: $brand-row-alt; }
+  &:hover { background: $brand-mid; }
 }
 
 .pickerOptionSelected {
-  background: $brand-dark;
-  color: $brand-light;
+  background: $brand-tint;
 
-  &:hover { background: $brand-hover; }
+  &:hover { background: $brand-tint; }
+
+  .checkMark { top: 50%; margin-top: -11px; }
 }
+
+// Stands where a photograph of the place would go.
+.pickerThumb {
+  flex: 0 0 auto;
+  width: 58px;
+  height: 44px;
+  border-radius: 8px;
+  background: linear-gradient(160deg, #CFE3F1 0%, #F3D9C2 62%, #E2B892 100%);
+  color: $brand-dark;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pickerText { min-width: 0; }
 
 .pickerMeta {
   display: block;
-  font-size: $size-hint;
-  color: $muted;
+  font-family: $font-body;
+  font-size: $size-caption;
+  font-weight: $weight-body;
+  color: #4A4A4A;
 }
 
-.pickerOptionSelected .pickerMeta { color: $brand-light; }
-
 .pickerEmpty {
-  padding: 12px;
+  padding: 12px 6px;
   font-family: $font-body;
   font-size: $size-hint;
   color: $muted;
 }
 
-// Today / Advance
+// -----------------------------------------------------------------------------
+// Screen 2 - when
+// -----------------------------------------------------------------------------
+
+// Today / Advance: two halves of one control.
 .toggleRow {
   display: flex;
   gap: $gap-sm;
   margin-bottom: $gap-md;
 }
 
-// Time slots
+.segment {
+  flex: 1 1 0;
+  min-height: 42px;
+}
+
+.calendar {
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  padding: 12px;
+  margin-bottom: $gap-md;
+}
+
+.calendarHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: $gap-sm;
+}
+
+.calendarMonth {
+  font-family: $font-heading;
+  font-size: $size-table-cell;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+}
+
+.calendarNav {
+  @include focus-ring;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: $radius-badge;
+  background: none;
+  color: $brand-dark;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color $transition;
+
+  &:hover { background: $brand-mid; }
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  justify-items: center;
+}
+
+.calendarWeekday {
+  font-family: $font-body;
+  font-size: 11px;
+  font-weight: $weight-caption;
+  color: $muted;
+  padding: 4px 0;
+}
+
+.calendarDay {
+  @include focus-ring;
+  width: 36px;
+  height: 36px;
+  max-width: 100%;
+  border: none;
+  border-radius: $radius-badge;
+  background: none;
+  font-family: $font-body;
+  font-size: $size-caption;
+  color: $brand-dark;
+  cursor: pointer;
+  transition: background-color $transition, color $transition;
+
+  &:hover { background: $brand-mid; }
+}
+
+// A day that has gone is dimmed. Its time slots are all disabled, as before.
+.calendarDayPast { color: $muted; opacity: 0.6; }
+
+// Today carries a ring as well as its accessible name.
+.calendarDayToday { box-shadow: inset 0 0 0 1px $brand-dark; font-weight: 700; }
+
+.calendarDaySelected {
+  background: $brand-dark;
+  color: $white;
+  font-weight: 700;
+  opacity: 1;
+
+  &:hover { background: $brand-hover; }
+}
+
 .slotGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: $gap-sm;
-  max-height: 260px;
+  max-height: 212px;
   overflow: auto;
   padding: 2px;
 }
@@ -152,8 +582,10 @@
 .slot {
   @include focus-ring;
   font-family: $font-body;
-  font-size: $size-table-cell;
-  padding: 9px 4px;
+  font-size: $size-caption;
+  font-weight: $weight-caption;
+  min-height: 40px;
+  padding: 8px 4px;
   border: 1px solid $border;
   border-radius: $radius-toolbar;
   background: $white;
@@ -161,10 +593,10 @@
   cursor: pointer;
   transition: background-color $transition, color $transition;
 
-  &:hover:not(:disabled) { background: $brand-row-alt; }
+  &:hover:not(:disabled) { background: $brand-tint; }
 
   &:disabled {
-    opacity: 0.55;
+    opacity: 0.45;
     cursor: not-allowed;
   }
 }
@@ -172,81 +604,536 @@
 .slotSelected {
   background: $brand-dark;
   border-color: $brand-dark;
-  color: $brand-light;
+  color: $white;
 
   &:hover:not(:disabled) { background: $brand-hover; }
 }
 
-// Screen 5 - processing
-.processing {
-  text-align: center;
-  padding: 32px $pad-panel-x;
+// -----------------------------------------------------------------------------
+// Screens 3 and 4 - options
+// -----------------------------------------------------------------------------
+// A selected option turns peach with a brown edge AND shows a tick with the
+// word "Selected" behind it for screen readers.
+
+.typeList {
+  display: flex;
+  flex-direction: column;
+  gap: $gap-md;
 }
 
+.typeCard,
+.vehicleTile {
+  @include focus-ring;
+  position: relative;
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  font-family: $font-body;
+  color: $brand-dark;
+  cursor: pointer;
+  transition: background-color $transition, border-color $transition, box-shadow $transition;
+
+  &:hover { background: $brand-row-alt; }
+}
+
+.typeCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  text-align: left;
+}
+
+.typeIcon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: $radius-field;
+  background: $brand-mid;
+  color: $brand-dark;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.typeText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 22px;
+}
+
+.optionTitle {
+  font-family: $font-heading;
+  font-size: 15px;
+  font-weight: $weight-heading;
+}
+
+.optionCaption {
+  font-size: $size-hint;
+  color: $muted;
+}
+
+.optionSelected {
+  background: $brand-tint;
+  border-color: $brand-dark;
+  box-shadow: inset 0 0 0 1px $brand-dark;
+
+  &:hover { background: $brand-tint; }
+
+  .typeIcon { background: $white; }
+}
+
+.checkMark {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: $radius-badge;
+  background: $brand-dark;
+  color: $white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Screen 4: three tiles to a row, each a drawing of the vehicle over its name.
+.vehicleGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vehicleTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 104px;
+  padding: 10px 4px 10px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(55, 35, 25, 0.06);
+
+  // On this screen the tick sits tight in the corner, as the reference has it.
+  .checkMark {
+    top: 5px;
+    right: 5px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.vehicleArt {
+  width: 100%;
+  max-width: 96px;
+  height: auto;
+  display: block;
+}
+
+.vehicleName {
+  font-family: $font-heading;
+  font-size: $size-caption;
+  font-weight: $weight-caption;
+  line-height: 1.25;
+  color: #1F1F1F;
+}
+
+// What the request needs besides the vehicle: people or items, and remarks.
+.vehicleDetails {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid $border;
+}
+
+// -----------------------------------------------------------------------------
+// Screen 5 - processing
+// -----------------------------------------------------------------------------
+
+.processingArt {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  margin: 0 auto 14px;
+}
+
+.heroHeadline {
+  font-family: $font-heading;
+  font-size: 17px;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+  text-align: center;
+  margin: 0 0 $gap-md;
+}
+
+// The checklist: a filled green tick for done, a blue ring for the step under
+// way, an empty grey ring for what is still to come. Each also says which it
+// is, in words, to a screen reader.
 .processingSteps {
   list-style: none;
-  margin: $gap-lg auto 0;
-  padding: 0;
-  max-width: 340px;
-  text-align: left;
+  margin: 0 0 16px;
+  padding: 0 6px;
 }
 
 .processingStep {
   display: flex;
   align-items: center;
   gap: $gap-md;
-  padding: 10px 0;
+  padding: 6px 0;
   font-family: $font-body;
   font-size: $size-table-cell;
-  color: $muted;
+  color: #1F1F1F;
 }
 
-.processingStepActive { color: $brand-dark; font-weight: 500; }
-.processingStepDone   { color: $brand-dark; }
+.processingStepActive { font-weight: 600; }
+
+.processingLabel { flex: 1 1 auto; }
 
 .processingMark {
   width: 20px;
   height: 20px;
   border-radius: $radius-badge;
-  border: 2px solid $border;
-  background: $white;
+  border: 3px solid #D5D8DC;
+  background: #EEF0F2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: $weight-badge;
   color: $white;
   flex: 0 0 auto;
+  box-sizing: border-box;
 }
 
 .processingMarkDone {
-  background: $state-healthy;
-  border-color: $state-healthy;
+  background: #21B25B;
+  border-color: #21B25B;
 }
 
 .processingMarkActive {
-  background: $state-progress;
-  border-color: $state-progress;
+  border: 5px solid #1E9BD7;
+  background: $white;
 }
 
+.infoBox {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #E3EEFB;
+  border-radius: $radius-card;
+  padding: 14px 16px;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  line-height: 1.45;
+  color: #1F1F1F;
+}
+
+.infoBoxIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: #1E63C4;
+}
+
+.infoBoxRef {
+  display: block;
+  margin-top: 4px;
+  font-size: $size-hint;
+  color: #44546A;
+}
+
+// -----------------------------------------------------------------------------
 // Screen 6 - confirmation
-.confirmGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: $gap-md;
-  margin-top: $gap-md;
-}
+// -----------------------------------------------------------------------------
 
-.summaryList {
+.confirmHero {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: $gap-md 0;
+  align-items: center;
+  text-align: center;
+  padding-top: 6px;
+
+  .heroHeadline { margin-bottom: 4px; }
 }
 
-.navRow {
+.confirmTick {
+  width: 64px;
+  height: 64px;
+  border-radius: $radius-badge;
+  background: $accent-green;
+  color: $white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 8px $accent-green-tint;
+  margin: 8px 0 18px;
+}
+
+.infoList {
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  padding: 2px 14px;
+}
+
+.infoRow {
   display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 0;
+  font-family: $font-body;
+  font-size: $size-caption;
+  color: $brand-dark;
+
+  &:not(:last-child) { border-bottom: 1px solid $border; }
+}
+
+.infoIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: $brand-dark;
+  padding-top: 1px;
+}
+
+.infoLabel {
+  flex: 0 0 96px;
+  color: $muted;
+}
+
+.infoValue {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.infoSub {
+  display: block;
+  font-size: $size-hint;
+  font-weight: $weight-body;
+  color: $muted;
+
+  a { color: inherit; }
+}
+
+.callButton {
+  @include focus-ring;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: $radius-badge;
+  background: $brand-mid;
+  color: $brand-dark;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: background-color $transition;
+
+  &:hover { background: $brand-tint; }
+}
+
+// -----------------------------------------------------------------------------
+// Screen 7 - track my ride
+// -----------------------------------------------------------------------------
+
+// Where the trip has got to, in words. The green is a tint behind dark text.
+// It is a button: pressing it shows or hides the stage-by-stage progress.
+.statusBanner {
+  @include focus-ring;
+  display: flex;
+  align-items: center;
+  gap: $gap-md;
+  width: 100%;
+  text-align: left;
+  background: #DDF5E3;
+  border: none;
+  border-radius: $radius-card;
+  padding: 12px 14px;
+  margin-bottom: $gap-md;
+  font-family: $font-body;
+  color: #1F1F1F;
+  cursor: pointer;
+  transition: background-color $transition;
+
+  &:hover { background: #D0EFD8; }
+}
+
+.statusBannerIcon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: $radius-field;
+  background: $white;
+  color: #1E7B46;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statusBannerText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: $size-table-cell;
+
+  strong {
+    font-family: $font-heading;
+    font-size: 15px;
+    font-weight: $weight-heading;
+  }
+}
+
+.statusBannerSub {
+  font-size: $size-caption;
+  color: #33503D;
+}
+
+.statusBannerChevron {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: #1F1F1F;
+  transition: transform $transition;
+}
+
+.chevronOpen { transform: rotate(90deg); }
+
+// The route picture. A diagram on the same drawn backdrop as screen 1.
+.trackMap {
+  position: relative;
+  height: 300px;
+  border-radius: $radius-card;
+  overflow: hidden;
+  margin-bottom: $gap-md;
+}
+
+.trackRoute {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+// The destination: a red pin whose tip sits on the end of the line.
+.trackPin {
+  position: absolute;
+  display: inline-flex;
+  color: #E5352B;
+  transform: translate(-50%, -92%);
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+
+  svg { fill: currentColor; }
+  svg circle { fill: $white; stroke: $white; }
+}
+
+// The pickup: a blue ring.
+.trackOrigin {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: $radius-badge;
+  background: $white;
+  border: 6px solid #2F6FE4;
+  box-shadow: 0 0 0 6px rgba(47, 111, 228, 0.2);
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+}
+
+.trackCar {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: $radius-badge;
+  background: $white;
+  color: #1F1F1F;
+  border: 2px solid #1F1F1F;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  transition: left 0.6s ease, top 0.6s ease;
+}
+
+.trackLabel {
+  position: absolute;
+  max-width: 52%;
+  background: $white;
+  border-radius: $radius-field;
+  box-shadow: 0 4px 12px rgba(55, 35, 25, 0.16);
+  padding: 7px 10px;
+  display: flex;
+  flex-direction: column;
+  font-family: $font-body;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #4A4A4A;
+
+  strong {
+    font-family: $font-heading;
+    font-size: $size-caption;
+    font-weight: $weight-heading;
+    color: #1F1F1F;
+  }
+}
+
+// Driver over vehicle, in one card.
+.rideCard {
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  padding: 2px 14px;
+  margin-bottom: $gap-md;
+}
+
+.rideRow {
+  display: flex;
+  align-items: center;
+  gap: $gap-md;
+  padding: 12px 0;
+
+  &:not(:last-child) { border-bottom: 1px solid $border; }
+}
+
+.rideVehicleArt {
+  flex: 0 0 auto;
+  width: 64px;
+  display: inline-flex;
+}
+
+.driverAvatar {
+  flex: 0 0 auto;
+  width: 50px;
+  height: 50px;
+  border-radius: $radius-badge;
+  background: $brand-tint;
+  color: $brand-dark;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.driverText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: #1F1F1F;
+
+  strong { font-family: $font-heading; font-weight: $weight-heading; }
+}
+
+.trackMeta {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: $gap-sm;
-  margin-top: $gap-lg;
+  flex-wrap: wrap;
+  font-family: $font-body;
+  font-size: $size-caption;
+  color: $muted;
 }

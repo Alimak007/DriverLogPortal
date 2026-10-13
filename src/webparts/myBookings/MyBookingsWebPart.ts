@@ -1,6 +1,7 @@
 import { IPropertyPaneGroup, PropertyPaneSlider } from '@microsoft/sp-property-pane';
 import * as React from 'react';
 import * as ReactDom from 'react-dom';
+import { APP_CONFIG } from '../../common/config/AppConfig';
 import {
   FleetWebPartBase,
   IFleetWebPartProps,
@@ -20,6 +21,7 @@ export default class MyBookingsWebPart extends FleetWebPartBase<IMyBookingsWebPa
       bootstrapError: this.bootstrapError,
       historyCount: this.properties.historyCount ?? 50,
       refreshMs: (this.properties.refreshSeconds ?? 30) * 1000,
+      bookARideUrl: `${this.context.pageContext.web.absoluteUrl}${APP_CONFIG.pages.bookARide}`,
     });
 
     ReactDom.render(element, this.domElement);

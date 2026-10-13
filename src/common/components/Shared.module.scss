@@ -59,6 +59,9 @@
 
 .btnBlock { width: 100%; }
 
+// A button that is really a link to another page.
+.btnLink { text-decoration: none; box-sizing: border-box; }
+
 // =============================================================================
 // Badges
 // =============================================================================
@@ -415,12 +418,11 @@
 }
 
 .tileSelected {
-  background: $brand-dark;
+  background: $brand-tint;
   border-color: $brand-dark;
-  color: $brand-light;
+  box-shadow: inset 0 0 0 1px $brand-dark;
 
-  .tileCaption { color: $brand-light; }
-  &:hover { background: $brand-hover; }
+  &:hover { background: $brand-tint; }
 }
 
 .tileTitle {

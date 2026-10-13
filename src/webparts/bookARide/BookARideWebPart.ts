@@ -5,6 +5,7 @@ import {
 } from '@microsoft/sp-property-pane';
 import * as React from 'react';
 import * as ReactDom from 'react-dom';
+import { APP_CONFIG } from '../../common/config/AppConfig';
 import {
   FleetWebPartBase,
   IFleetWebPartProps,
@@ -25,6 +26,7 @@ export default class BookARideWebPart extends FleetWebPartBase<IBookARideWebPart
       // The pane field is a text box, so it arrives as a string, not a number.
       defaultPropertyId: parseInt(String(this.properties.defaultPropertyId ?? ''), 10) || 0,
       processingPollMs: (this.properties.processingPollMs ?? 10) * 1000,
+      myBookingsUrl: `${this.context.pageContext.web.absoluteUrl}${APP_CONFIG.pages.myBookings}`,
     });
 
     ReactDom.render(element, this.domElement);

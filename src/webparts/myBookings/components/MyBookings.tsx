@@ -12,17 +12,17 @@
 import * as React from 'react';
 import { ConfirmDialog } from '../../../common/components/ConfirmDialog';
 import { DataGrid, IColumn, RowActions } from '../../../common/components/DataGrid';
+import { Icon, IconName } from '../../../common/components/Icons';
 import {
   Badge,
   Button,
   EmptyState,
   ErrorBanner,
-  FieldRow,
+  LinkButton,
   Loading,
   Notice,
   PageShell,
   Reference,
-  SectionHeading,
 } from '../../../common/components/Shared';
 import { buildStages, EtaDisplay, Timeline } from '../../../common/components/Timeline';
 import {
@@ -45,6 +45,45 @@ export interface IMyBookingsProps {
   bootstrapError?: unknown;
   historyCount: number;
   refreshMs: number;
+  /** The Book a Ride page. The button to it is left out when this is not given. */
+  bookARideUrl?: string;
+}
+
+/** One line of the booking detail: an icon, a label, and the value. */
+function InfoRow({ icon, label, action, children }: {
+  icon: IconName;
+  label: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div className={styles.infoRow}>
+      <span className={styles.infoIcon} aria-hidden="true">
+        <Icon name={icon} size={18} />
+      </span>
+      <span className={styles.infoLabel}>{label}</span>
+      <span className={styles.infoValue}>{children}</span>
+      {action}
+    </div>
+  );
+}
+
+/** A card with the brown header the booking screens use. */
+function HeadedCard({ icon, title, className, children }: {
+  icon: IconName;
+  title: string;
+  className?: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <section className={[styles.bookingCard, className ?? ''].join(' ')} aria-label={title}>
+      <header className={styles.bookingCardHeader}>
+        <Icon name={icon} size={22} />
+        <h2 className={styles.bookingCardTitle}>{title}</h2>
+      </header>
+      <div className={styles.bookingCardBody}>{children}</div>
+    </section>
+  );
 }
 
 export const MyBookings: React.FC<IMyBookingsProps> = ({
@@ -53,6 +92,7 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
   bootstrapError,
   historyCount,
   refreshMs,
+  bookARideUrl,
 }) => {
   const [requests, setRequests] = React.useState<ITransportRequest[]>([]);
   const [selectedId, setSelectedId] = React.useState<number | undefined>();
@@ -159,13 +199,13 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
       key: 'requestId',
       label: 'Reference',
       render: (r) => <Reference>{r.requestId}</Reference>,
-      width: '130px',
+      width: '96px',
     },
     {
       key: 'required',
       label: 'Required',
       render: (r) => formatDateTime(r.requiredDateTime),
-      width: '150px',
+      width: '128px',
     },
     {
       key: 'route',
@@ -178,7 +218,7 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
       label: 'Request type',
       render: (r) => r.requestType,
       filterValue: (r) => r.requestType,
-      width: '160px',
+      width: '128px',
     },
     {
       key: 'status',
@@ -186,7 +226,7 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
       // Colour AND the word, always.
       render: (r) => <Badge state={requestState(r.status)} label={r.status} />,
       filterValue: (r) => r.status,
-      width: '150px',
+      width: '168px',
     },
     {
       key: 'actions',
@@ -198,7 +238,7 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
           </Button>
         </RowActions>
       ),
-      width: '100px',
+      width: '86px',
     },
   ];
 
@@ -211,14 +251,30 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
     );
   }
 
+  const bookARide = bookARideUrl ? (
+    <LinkButton href={bookARideUrl} kind="primary">
+      <Icon name="car" size={18} />
+      Book a Ride
+    </LinkButton>
+  ) : undefined;
+
+  const nowStage = detail?.trip
+    ? buildStages(detail.trip.tripStatus, stageTimestamps(detail)).filter(
+        (st) => st.status === detail.trip?.tripStatus,
+      )[0]
+    : undefined;
+
   return (
     <PageShell
       heading="My bookings"
       caption="Your requests, newest first. Select one to see where it has got to."
       actions={
-        <Button kind="secondary" onClick={() => load().catch(() => undefined)}>
-          Refresh
-        </Button>
+        <>
+          {bookARide}
+          <Button kind="secondary" onClick={() => load().catch(() => undefined)}>
+            Refresh
+          </Button>
+        </>
       }
     >
       <ErrorBanner error={error} onDismiss={() => setError(undefined)} />
@@ -230,11 +286,11 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
       ) : requests.length === 0 ? (
         <EmptyState title="You have not booked anything yet">
           Use the Book a ride page to make your first request.
+          {bookARide ? <div className={styles.emptyAction}>{bookARide}</div> : undefined}
         </EmptyState>
       ) : (
         <div className={styles.split}>
-          <div>
-            <SectionHeading>Request history</SectionHeading>
+          <HeadedCard icon="calendar" title="Request History">
             <DataGrid
               caption="Your transport requests, newest first"
               captionVisuallyHidden
@@ -243,10 +299,9 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
               rowKey={(r) => r.id}
               emptyMessage="No requests match the filters you have set."
             />
-          </div>
+          </HeadedCard>
 
-          <div>
-            <SectionHeading>Booking detail</SectionHeading>
+          <HeadedCard icon="doc" title="Booking Detail" className={styles.detailCard}>
             {detailLoading && !detail ? (
               <Loading what="Loading the booking" />
             ) : !detail || !selected ? (
@@ -254,33 +309,54 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
                 Choose a row to see its status and your driver&apos;s details.
               </EmptyState>
             ) : (
-              <div className={styles.detailPanel}>
+              <>
                 <div className={styles.detailHeader}>
-                  <Reference>{selected.requestId}</Reference>
+                  <span>
+                    Reference <Reference>{selected.requestId}</Reference>
+                  </span>
                   <Badge state={requestState(selected.status)} label={selected.status} />
                 </div>
 
-                <div className={styles.detailGrid}>
-                  <FieldRow label="Required">
+                {detail.trip ? (
+                  <div className={styles.statusBanner}>
+                    <span className={styles.statusBannerIcon} aria-hidden="true">
+                      <Icon name="car" size={22} />
+                    </span>
+                    <div className={styles.statusBannerText}>
+                      <strong>{nowStage ? nowStage.label : detail.trip.tripStatus}</strong>
+                      <EtaDisplay
+                        minutes={detail.trip.etaMinutes}
+                        updatedOn={detail.trip.etaUpdatedOn}
+                      />
+                    </div>
+                  </div>
+                ) : undefined}
+
+                <div className={styles.infoList}>
+                  <InfoRow icon="calendar" label="Required">
                     {formatDateTime(selected.requiredDateTime)}
-                  </FieldRow>
-                  <FieldRow label="From">
+                  </InfoRow>
+                  <InfoRow icon="target" label="From">
                     {selected.pickupLocation?.title ?? '—'}
-                  </FieldRow>
-                  <FieldRow label="To">
+                  </InfoRow>
+                  <InfoRow icon="pin" label="To">
                     {selected.dropOffLocation?.title ?? '—'}
-                  </FieldRow>
-                  <FieldRow label="Request type">{selected.requestType}</FieldRow>
-                  <FieldRow label="Vehicle type">
+                  </InfoRow>
+                  <InfoRow icon="doc" label="Request type">
+                    {selected.requestType}
+                  </InfoRow>
+                  <InfoRow icon="car" label="Vehicle type">
                     {selected.vehicleTypeRequested?.title ?? '—'}
                     {selected.otherVehicleText ? ` (${selected.otherVehicleText})` : ''}
-                  </FieldRow>
+                  </InfoRow>
                   {selected.requestType === 'Items or Documents' ? (
-                    <FieldRow label="Items">
+                    <InfoRow icon="box" label="Items">
                       {selected.itemDescription ?? '—'}
-                    </FieldRow>
+                    </InfoRow>
                   ) : (
-                    <FieldRow label="Passengers">{selected.noOfPax ?? '—'}</FieldRow>
+                    <InfoRow icon="users" label="Passengers">
+                      {selected.noOfPax ?? '—'}
+                    </InfoRow>
                   )}
                 </div>
 
@@ -313,51 +389,69 @@ export const MyBookings: React.FC<IMyBookingsProps> = ({
 
                 {detail.trip ? (
                   <>
-                    <hr className={styles.divider} />
-                    <SectionHeading>Your driver and vehicle</SectionHeading>
-                    <div className={styles.detailGrid}>
-                      <FieldRow label="Driver">{detail.driverName ?? '—'}</FieldRow>
-                      <FieldRow label="Phone">
-                        {detail.driverPhone ? (
-                          <a href={`tel:${detail.driverPhone}`}>{detail.driverPhone}</a>
-                        ) : (
-                          '—'
-                        )}
-                      </FieldRow>
-                      <FieldRow label="Vehicle">
+                    <h3 className={styles.subHeading}>Your driver and vehicle</h3>
+                    <div className={styles.infoList}>
+                      <InfoRow
+                        icon="user"
+                        label="Driver"
+                        action={
+                          detail.driverPhone ? (
+                            <a
+                              className={styles.callButton}
+                              href={`tel:${detail.driverPhone}`}
+                              aria-label={`Call ${detail.driverName ?? 'the driver'}`}
+                            >
+                              <Icon name="phone" size={16} />
+                            </a>
+                          ) : undefined
+                        }
+                      >
+                        {detail.driverName ?? '—'}
+                        <span className={styles.infoSub}>
+                          {detail.driverPhone ? (
+                            <a href={`tel:${detail.driverPhone}`}>{detail.driverPhone}</a>
+                          ) : (
+                            '—'
+                          )}
+                        </span>
+                      </InfoRow>
+                      <InfoRow icon="car" label="Vehicle">
                         {[detail.vehicleColour, detail.vehicleMake, detail.vehicleModel]
                           .filter(Boolean)
                           .join(' ') || '—'}
-                      </FieldRow>
-                      <FieldRow label="Plate">{detail.vehiclePlate ?? '—'}</FieldRow>
+                        <span className={styles.infoSub}>
+                          {`Plate: ${detail.vehiclePlate ?? '—'}`}
+                        </span>
+                      </InfoRow>
                     </div>
 
-                    <hr className={styles.divider} />
-                    <SectionHeading>Progress</SectionHeading>
-                    <Timeline
-                      stages={buildStages(
-                        detail.trip.tripStatus,
-                        stageTimestamps(detail),
-                      )}
-                      current={detail.trip.tripStatus}
-                    />
-                    <EtaDisplay
-                      minutes={detail.trip.etaMinutes}
-                      updatedOn={detail.trip.etaUpdatedOn}
-                    />
+                    <h3 className={styles.subHeading}>Progress</h3>
+                    <div className={styles.progressCard}>
+                      <Timeline
+                        stages={buildStages(
+                          detail.trip.tripStatus,
+                          stageTimestamps(detail),
+                        )}
+                        current={detail.trip.tripStatus}
+                      />
+                    </div>
                   </>
                 ) : undefined}
 
                 {mayCancelDirectly || needsCoordinator ? (
                   <div className={styles.detailActions}>
-                    <Button kind="destructive" onClick={() => setDialogOpen(true)}>
+                    <Button
+                      kind="destructive"
+                      className={styles.cancelButton}
+                      onClick={() => setDialogOpen(true)}
+                    >
                       {mayCancelDirectly ? 'Cancel this booking' : 'Ask to cancel'}
                     </Button>
                   </div>
                 ) : undefined}
-              </div>
+              </>
             )}
-          </div>
+          </HeadedCard>
         </div>
       )}
 

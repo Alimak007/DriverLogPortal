@@ -15,30 +15,30 @@
 // -----------------------------------------------------------------------------
 // Colour palette
 // -----------------------------------------------------------------------------
-// A warm neutral range: a deep cocoa brown, a tan, and two near-white creams.
-// Five colours carry the whole interface.
+// A warm range taken from the booking design reference: a chestnut brown, a
+// soft sand, a cream and a peach tint. Six colours carry the whole interface.
 
-$brand-dark:    #452A24;  // Body text, table headers, primary buttons, active tab
-$brand-mid:     #D1C0AB;  // Secondary buttons, form field backgrounds
-$brand-light:   #F9F3EA;  // Card and container backgrounds; text on dark surfaces
-$brand-row-alt: #F8F2E9;  // Alternating table rows, against white
-$brand-hover:   #6A463B;  // Primary button hover only
-$white:         #FFFFFF;  // Page background, odd table rows
+$brand-dark:    #652D16;  // Card headers, table headers, primary buttons, text
+$brand-mid:     #F1E9DE;  // Secondary buttons, icon wells
+$brand-light:   #FBF6F0;  // Card and container backgrounds; text on dark surfaces
+$brand-row-alt: #FBF7F4;  // Alternating table rows, against white
+$brand-hover:   #7D3A1D;  // Primary button hover only
+$brand-tint:    #FDECD8;  // A selected option: peach, with a $brand-dark edge
+$white:         #FFFFFF;  // Page background, odd table rows, form fields
 
 // Derived tokens. These keep edges and secondary text in the same family
 // rather than introducing grey.
-$border: rgba(69, 42, 36, 0.18);  // Field, card and table borders
-$muted:  rgba(69, 42, 36, 0.72);  // Captions, hints, secondary figures
+$border: rgba(101, 45, 22, 0.16);  // Field, card and table borders
+$muted:  rgba(73, 38, 24, 0.72);   // Captions, hints, secondary figures
 
-// Legibility, measured:
-//   $brand-dark on $white        11.7:1
-//   $brand-dark on $brand-light  10.5:1
-//   $brand-light on $brand-dark  the same ratio inverted - which is why
-//                                primary buttons use that pair
+// Legibility:
+//   $brand-dark on $white, $brand-light and $brand-tint is above 9:1.
+//   $brand-light on $brand-dark is the same pair inverted - which is why
+//   primary buttons and card headers use it.
 // All well past the 4.5:1 WCAG AA asks for body text.
 //
-// $brand-mid is A BACKGROUND ONLY. It is too light to carry white text, so
-// secondary buttons put $brand-dark on it.
+// $brand-mid and $brand-tint are BACKGROUNDS ONLY. They are too light to carry
+// white text, so anything on them is set in $brand-dark.
 
 
 // -----------------------------------------------------------------------------
@@ -55,6 +55,13 @@ $status-blue:   #2F5D9F;  // In progress: en route, in transit, on trip   6.4:1
 $status-red:    #B22222;  // Exception: cancelled, rejected, overdue      6.1:1
 $status-winner: #228B22;  // Reserved, brand-wide palette                 4.9:1
 $status-bronze: #A0522D;  // Reserved, brand-wide palette                 5.6:1
+
+// The confirmation tick and the "driver is on the way" banner. DECORATIVE: the
+// bright green is too light for white body text, so it only ever sits behind
+// an icon, and the tint only ever carries $brand-dark or $status-green text.
+$accent-green:      #289C5D;
+$accent-green-tint: #E3F6E8;
+$accent-blue-tint:  #EEF3FC;
 
 // The four meanings the requirements fix, mapped onto the palette above.
 // Reference THESE in components, not the raw status colours, so the mapping
@@ -74,26 +81,18 @@ $state-neutral:   $muted;
 // -----------------------------------------------------------------------------
 // Typography
 // -----------------------------------------------------------------------------
-// Two faces, and the split between them is strict:
-// PLAYFAIR DISPLAY ANNOUNCES, ROBOTO INFORMS.
+// ONE FACE, ROBOTO, as the booking design reference shows. Headings, button
+// labels, reference numbers and counters are set bold; everything else is
+// regular or medium. Hierarchy comes from weight and size, not from a second
+// typeface.
 //
-//   Playfair Display            Roboto
-//   ------------------------    ------------------------------------
-//   Page headings               All table content
-//   Table column headers        Every form field, label and value
-//   All button labels           Captions, hints and validation messages
-//   The header wordmark         Badges
-//   Reference numbers,          Body text generally
-//     score totals, counters
+// The two tokens are kept apart so headings can be given their own face again
+// by changing one line.
 //
-// Buttons being set in the heading face is unusual and deliberate: it ties the
-// buttons to the table headers above them and is what gives the interface its
-// character.
-//
-// The fallback chains matter. If neither face loads, the interface degrades to
-// Georgia and Segoe UI rather than to browser defaults.
+// The fallback chain matters. If Roboto does not load, the interface degrades
+// to Segoe UI rather than to browser defaults.
 
-$font-heading: 'Playfair Display', Georgia, 'Times New Roman', serif;
+$font-heading: 'Roboto', 'Segoe UI', Arial, sans-serif;
 $font-body:    'Roboto', 'Segoe UI', Arial, sans-serif;
 
 $size-page-heading:    24px;
@@ -109,7 +108,7 @@ $size-hint:            12px;
 
 $weight-heading: 700;
 $weight-table-header: 600;
-$weight-button: 500;
+$weight-button: 600;
 $weight-badge: 700;
 $weight-body: 400;
 $weight-caption: 500;
@@ -123,8 +122,8 @@ $weight-caption: 500;
 
 $radius-container: 18px;  // The page container
 $radius-card:      16px;  // Cards, panels, question tiles
-$radius-field:     16px;  // Text fields, dropdowns, popups
-$radius-toolbar:    8px;  // Toolbar and form buttons
+$radius-field:     10px;  // Text fields, dropdowns, popups
+$radius-toolbar:   10px;  // Toolbar and form buttons
 $radius-action:     6px;  // Small in-row action buttons
 $radius-badge:    999px;  // Badges are the exception: fully round
 
@@ -161,9 +160,9 @@ $bp-min:    360px;  // Everything is responsive from here
 // Add elevation only where something genuinely floats above the page.
 // Form tiles carry NO shadow at all.
 
-$shadow-container: 0 10px 30px rgba(69, 42, 36, 0.12);  // The page container
-$shadow-card:      0 4px 14px  rgba(69, 42, 36, 0.08);  // Sticky command bar
-$shadow-button:    0 2px 6px   rgba(69, 42, 36, 0.18);  // Primary buttons
+$shadow-container: 0 10px 30px rgba(101, 45, 22, 0.12);  // The page container
+$shadow-card:      0 4px 14px  rgba(101, 45, 22, 0.08);  // Sticky command bar
+$shadow-button:    0 2px 6px   rgba(101, 45, 22, 0.22);  // Primary buttons
 
 // Motion is minimal: 0.15s on background, colour and shadow. Nothing else
 // animates, so there is no animation to disable.
@@ -191,7 +190,8 @@ $transition: 0.15s ease;
   font-weight: $weight-button;
   border-radius: $radius-toolbar;
   border: none;
-  padding: 9px 18px;
+  padding: 10px 18px;
+  min-height: 40px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -221,8 +221,9 @@ $transition: 0.15s ease;
   @include button-base;
   background: $brand-mid;
   color: $brand-dark;
+  border: 1px solid $border;
 
-  &:hover:not(:disabled) { background: $brand-light; }
+  &:hover:not(:disabled) { background: $brand-tint; }
 }
 
 @mixin button-destructive {
@@ -236,6 +237,7 @@ $transition: 0.15s ease;
   @include button-base;
   border-radius: $radius-action;
   padding: 5px 10px;
+  min-height: 0;
   font-size: $size-hint;
   background: transparent;
   color: $brand-dark;
@@ -274,10 +276,10 @@ $transition: 0.15s ease;
   font-family: $font-body;
   font-size: $size-table-cell;
   color: $brand-dark;
-  background: $brand-mid;
+  background: $white;
   border: 1px solid $border;
   border-radius: $radius-field;
-  padding: 9px 12px;
+  padding: 10px 12px;
   width: 100%;
   box-sizing: border-box;
 
