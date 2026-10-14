@@ -30,7 +30,6 @@ import {
 import {
   IDispatchSnapshot,
   IDriver,
-  IProperty,
   IRideOffer,
   ITransportRequest,
   ITripCard,
@@ -52,6 +51,7 @@ import {
   formatTime,
   gulfMonthBounds,
 } from '../../../common/utils/dates';
+import { DispatchCalendar } from './DispatchCalendar';
 import styles from './DispatchDashboard.module.scss';
 
 export interface IDispatchDashboardProps {
@@ -72,6 +72,18 @@ type CounterKey =
   | 'allocated';
 
 type AvailabilityTab = 'drivers' | 'vehicles';
+type Layout = 'list' | 'calendar';
+
+/** Remembers List or Calendar per browser. A convenience only - may be absent. */
+const LAYOUT_KEY = 'dispatchDashboard.layout';
+
+function readLayout(): Layout {
+  try {
+    return window.localStorage.getItem(LAYOUT_KEY) === 'calendar' ? 'calendar' : 'list';
+  } catch {
+    return 'list';
+  }
+}
 
 const TITLE = 'Coordinator – Fleet Management Dashboard';
 
@@ -384,25 +396,15 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
 
   const stepsRef = React.useRef<HTMLElement>(null);
 
-  /**
-   * The property filter.
-   *
-   * It is a CONTROL, not a scope. Every Coordinator now sees every request by
-   * default: with one driver pool, a request scoped to a property would be
-   * invisible to everyone else, and if that Coordinator were on leave an
-   * escalation could sit unseen. Narrowing is a choice the Coordinator makes,
-   * not something their account does to them.
-   */
-  const [propertyFilter, setPropertyFilter] = React.useState<number | undefined>();
-  const [properties, setProperties] = React.useState<IProperty[]>([]);
-
-  React.useEffect(() => {
-    if (!services) return;
-    services.master
-      .getProperties()
-      .then(setProperties)
-      .catch(() => setProperties([]));
-  }, [services]);
+  const [layout, setLayoutState] = React.useState<Layout>(readLayout);
+  const setLayout = (next: Layout): void => {
+    setLayoutState(next);
+    try {
+      window.localStorage.setItem(LAYOUT_KEY, next);
+    } catch {
+      // Storage blocked: the choice simply is not remembered.
+    }
+  };
 
   const load = React.useCallback(async (): Promise<void> => {
     if (!services) return;
@@ -415,7 +417,14 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
       // broadcast until a Coordinator or driver has a dashboard open. They
       // release four hours ahead, inside working hours. Deliberately NOT
       // solved with a flow - the eligibility rules live in one place only.
-      await services.dispatch.sweepPendingBroadcasts();
+      //
+      // Housekeeping, so a failure here is logged and must not stop the
+      // dashboard loading; the next poll tries the sweep again.
+      try {
+        await services.dispatch.sweepPendingBroadcasts();
+      } catch (sweepError) {
+        console.error('[FleetPortal] broadcast sweep failed', sweepError);
+      }
 
       const result = await services.dispatch.getSnapshot(period.from, period.to);
       setSnapshot(result);
@@ -442,28 +451,19 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
   // Counter filtering
   // ---------------------------------------------------------------------------
 
-  const inProperty = React.useCallback(
-    (r?: ITransportRequest): boolean =>
-      propertyFilter === undefined || r?.property?.id === propertyFilter,
-    [propertyFilter],
-  );
-
   const visibleTrips: ITripCard[] = React.useMemo(() => {
     if (!snapshot) return [];
     if (activeCounter === 'pending') return [];
-    return snapshot.ongoingTrips.filter((t) => inProperty(t.request));
-  }, [snapshot, activeCounter, inProperty]);
+    return snapshot.ongoingTrips;
+  }, [snapshot, activeCounter]);
 
   const visibleRequests: ITransportRequest[] = React.useMemo(() => {
     if (!snapshot) return [];
     if (activeCounter === 'ongoing') return [];
-    return snapshot.pendingRequests.filter(inProperty);
-  }, [snapshot, activeCounter, inProperty]);
+    return snapshot.pendingRequests;
+  }, [snapshot, activeCounter]);
 
-  const allPending: ITransportRequest[] = React.useMemo(
-    () => (snapshot ? snapshot.pendingRequests.filter(inProperty) : []),
-    [snapshot, inProperty],
-  );
+  const allPending: ITransportRequest[] = snapshot ? snapshot.pendingRequests : [];
 
   const toggle = (key: CounterKey | undefined): void =>
     setActiveCounter(activeCounter === key ? undefined : key);
@@ -637,6 +637,26 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
           ]}
         />
       ),
+    },
+  ];
+
+  // The same trip columns, with the drop time in place of the ETA and no
+  // actions: a completed trip is history.
+  const completedColumns: IColumn<ITripCard>[] = [
+    ...ongoingColumns.filter((c) => c.key !== 'eta' && c.key !== 'actions' && c.key !== 'status'),
+    {
+      key: 'completedOn',
+      label: 'Completed On',
+      render: (c) => (
+        <span className={styles.nowrap}>
+          {when(c.trip.actualDropTime ?? c.request.requiredDateTime)}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (c) => <Pill state={tripState(c.trip.tripStatus)} label={c.trip.tripStatus} />,
     },
   ];
 
@@ -819,6 +839,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
   const ongoingFocused = activeCounter === 'ongoing';
   const pendingFocused = activeCounter === 'pending';
   const availFocused = activeCounter === 'availableDrivers' || activeCounter === 'availableVehicles';
+  const completedFocused = activeCounter === 'completed';
 
   const menu: { text: string; icon: IconName; active: boolean; onClick?: () => void; href?: string }[] = [
     { text: 'Dashboard', icon: 'home', active: activeCounter === undefined, onClick: () => setActiveCounter(undefined) },
@@ -829,6 +850,13 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
     { text: 'Vehicles', icon: 'car', active: activeCounter === 'availableVehicles', onClick: showVehicles },
   ];
   if (reportsUrl) menu.push({ text: 'Reports', icon: 'chart', active: false, href: reportsUrl });
+
+  // The counters and the side menu filter the LIST grids, so in the calendar
+  // they first bring the list back.
+  const inList = (fn?: () => void): (() => void) => (): void => {
+    if (layout !== 'list') setLayout('list');
+    if (fn) fn();
+  };
 
   return (
     <div className={styles.page}>
@@ -841,20 +869,26 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
         </header>
 
         <div className={styles.toolbar}>
-          <Select
-            value={propertyFilter === undefined ? '' : String(propertyFilter)}
-            onChange={(e) =>
-              setPropertyFilter(e.target.value ? parseInt(e.target.value, 10) : undefined)
-            }
-            aria-label="Narrow the dashboard to one property"
-          >
-            <option value="">All properties</option>
-            {properties.map((pr) => (
-              <option key={pr.id} value={pr.id}>
-                {pr.title}
-              </option>
-            ))}
-          </Select>
+          <div className={styles.viewSwitch} role="group" aria-label="Dashboard layout">
+            <button
+              type="button"
+              className={[styles.viewButton, layout === 'list' ? styles.viewButtonActive : ''].join(' ')}
+              aria-pressed={layout === 'list'}
+              onClick={() => setLayout('list')}
+            >
+              <Icon name="doc" size={15} />
+              List View
+            </button>
+            <button
+              type="button"
+              className={[styles.viewButton, layout === 'calendar' ? styles.viewButtonActive : ''].join(' ')}
+              aria-pressed={layout === 'calendar'}
+              onClick={() => setLayout('calendar')}
+            >
+              <Icon name="calendar" size={15} />
+              Calendar View
+            </button>
+          </div>
           <Select
             value={`${period.from.toISOString()}`}
             onChange={(e) => {
@@ -899,7 +933,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
                     type="button"
                     className={[styles.navItem, m.active ? styles.navItemActive : ''].join(' ')}
                     aria-current={m.active ? 'true' : undefined}
-                    onClick={m.onClick}
+                    onClick={inList(m.onClick)}
                   >
                     <Icon name={m.icon} size={19} />
                     {m.text}
@@ -927,7 +961,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
             </div>
           ) : undefined}
 
-          <div className={styles.grid}>
+          <div className={[styles.grid, layout === 'calendar' ? styles.gridCalendar : ''].join(' ')}>
             {counters ? (
               <div
                 className={styles.counters}
@@ -939,7 +973,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
                     key={c.key}
                     type="button"
                     className={[styles.stat, c.tone, activeCounter === c.key ? styles.statActive : ''].join(' ')}
-                    onClick={c.onClick}
+                    onClick={inList(c.onClick)}
                     aria-pressed={activeCounter === c.key}
                     aria-label={`${c.label}: ${c.value}. Show these.`}
                     title={c.meta}
@@ -959,7 +993,35 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
               </div>
             ) : undefined}
 
-            {!pendingFocused && !availFocused ? (
+            {layout === 'calendar' && snapshot ? (
+              <div className={styles.calendarArea}>
+                <DispatchCalendar
+                  services={services}
+                  snapshot={snapshot}
+                  onSaved={load}
+                  onError={setError}
+                />
+              </div>
+            ) : undefined}
+
+            {layout === 'list' && completedFocused ? (
+              <Box
+                title="Completed Trips"
+                className={[styles.ongoing, styles.wideLeft].join(' ')}
+                action={<ViewAll open onClick={() => toggle('completed')} />}
+              >
+                <DataGrid
+                  caption="Trips completed in the selected period, latest first"
+                  captionVisuallyHidden
+                  columns={completedColumns}
+                  rows={snapshot?.completedTrips ?? []}
+                  rowKey={(c) => c.trip.id}
+                  emptyMessage="No trips were completed in this period."
+                />
+              </Box>
+            ) : undefined}
+
+            {layout === 'list' && !pendingFocused && !availFocused && !completedFocused ? (
               <Box
                 title="Ongoing Trips"
                 className={[styles.ongoing, ongoingFocused ? styles.wideLeft : ''].join(' ')}
@@ -976,7 +1038,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
               </Box>
             ) : undefined}
 
-            {!ongoingFocused && !availFocused ? (
+            {layout === 'list' && !ongoingFocused && !availFocused && !completedFocused ? (
               <Box
                 title="Pending Requests"
                 className={[styles.pending, pendingFocused ? styles.wideLeft : ''].join(' ')}
@@ -994,6 +1056,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
               </Box>
             ) : undefined}
 
+            {layout === 'list' ? (
             <Box
               title="Vehicles & Drivers Availability"
               className={[styles.availability, availFocused ? styles.wideAll : ''].join(' ')}
@@ -1051,6 +1114,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
                 the nightly reconciliation will correct it.
               </span>
             </Box>
+            ) : undefined}
           </div>
         </div>
       </div>

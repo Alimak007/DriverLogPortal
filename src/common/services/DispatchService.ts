@@ -23,6 +23,7 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { LIST } from '../config/AppConfig';
 import {
   IAllocationRule,
+  ICalendarData,
   IDispatchSnapshot,
   IDriver,
   IRideOffer,
@@ -221,6 +222,7 @@ export interface IDispatchService {
   getSnapshot(completedFrom: Date, completedTo: Date): Promise<IDispatchSnapshot>;
   getOffersForRequest(requestItemId: number): Promise<IRideOffer[]>;
   getTripsInRange(from: Date, to: Date): Promise<ITripAssignment[]>;
+  getCalendar(from: Date, to: Date): Promise<ICalendarData>;
 }
 
 // -----------------------------------------------------------------------------
@@ -1276,19 +1278,48 @@ export class DispatchService implements IDispatchService {
         const requestById = new Map<number, ITransportRequest>();
         requests.forEach((r) => requestById.set(r.id, r));
 
+        // A completed trip's request is only in the batch above if the request
+        // was last modified inside the period. Fetch any that are missing, so
+        // the Completed Trips grid lists every trip the counter counts.
+        const completed = trips.filter((t) => t.tripStatus === TRIP_STATUS.Completed);
+        const missing = completed
+          .map((t) => t.request?.id)
+          .filter((id): id is number => id !== undefined && !requestById.has(id))
+          .filter((id, i, all) => all.indexOf(id) === i);
+        for (let i = 0; i < missing.length; i += 40) {
+          const chunk = missing.slice(i, i + 40);
+          const rows: any[] = await sp.web.lists
+            .getByTitle(LIST.transportRequests)
+            .items.select(...SELECT_REQUEST)
+            .expand(...EXPAND_REQUEST)
+            .filter(chunk.map((id) => `Id eq ${id}`).join(' or '))
+            .top(chunk.length)()
+            .catch(() => []);
+          rows.map(toRequest).forEach((r) => requestById.set(r.id, r));
+        }
+
+        const toCard = (trip: ITripAssignment): ITripCard => {
+          const request = trip.request ? requestById.get(trip.request.id) : undefined;
+          return {
+            trip,
+            request: request as ITransportRequest,
+            requesterName: request?.requester?.title ?? '',
+            vehiclePlate: trip.vehicle?.title ?? '',
+          };
+        };
+
         const ongoingTrips: ITripCard[] = trips
           .filter((t) => t.tripStatus === TRIP_STATUS.EnRoute || t.tripStatus === TRIP_STATUS.InTransit)
-          .map((trip) => {
-            const request = trip.request ? requestById.get(trip.request.id) : undefined;
-            return {
-              trip,
-              request: request as ITransportRequest,
-              requesterName: request?.requester?.title ?? '',
-              vehiclePlate: trip.vehicle?.title ?? '',
-            };
-          })
+          .map(toCard)
           .filter((c) => c.request !== undefined)
           .sort((a, b) => a.request.requiredDateTime.getTime() - b.request.requiredDateTime.getTime());
+
+        const dropTime = (c: ITripCard): number =>
+          (c.trip.actualDropTime ?? c.request.requiredDateTime).getTime();
+        const completedTrips: ITripCard[] = completed
+          .map(toCard)
+          .filter((c) => c.request !== undefined)
+          .sort((a, b) => dropTime(b) - dropTime(a));
 
         const pendingRequests = requests
           .filter((r) => PENDING_STATUSES.indexOf(r.status) !== -1)
@@ -1331,12 +1362,13 @@ export class DispatchService implements IDispatchService {
           counters: {
             ongoingTrips: ongoingTrips.length,
             pendingRequests: pendingRequests.length,
-            completedTrips: trips.filter((t) => t.tripStatus === TRIP_STATUS.Completed).length,
+            completedTrips: completed.length,
             availableDrivers,
             availableVehicles,
             allocatedPairs: pairs.size,
           },
           ongoingTrips,
+          completedTrips,
           pendingRequests,
           drivers,
           vehicles,
@@ -1379,6 +1411,83 @@ export class DispatchService implements IDispatchService {
           .orderBy('AcceptedOn', false)
           .top(2000)();
         return rows.map(toTrip);
+      },
+    );
+  }
+
+  /**
+   * The Coordinator's calendar: every live request whose REQUIRED time falls
+   * in the period, with its current trip, and the availability blocks that
+   * overlap it. READ ONLY.
+   *
+   * Requests are read by RequiredDateTime, which is indexed, so the read stays
+   * under the list view threshold. Trips are then read by request id in small
+   * batches rather than one by one.
+   */
+  public async getCalendar(from: Date, to: Date): Promise<ICalendarData> {
+    return guard(
+      'The calendar could not be loaded.',
+      'Refresh the page, or move to a shorter period.',
+      async () => {
+        const sp = getSP();
+
+        const [requestRows, blockRows] = await Promise.all([
+          sp.web.lists
+            .getByTitle(LIST.transportRequests)
+            .items.select(...SELECT_REQUEST)
+            .expand(...EXPAND_REQUEST)
+            .filter(
+              `RequiredDateTime ge '${toIso(from)}' and RequiredDateTime lt '${toIso(to)}'`,
+            )
+            .orderBy('RequiredDateTime', true)
+            .top(1000)(),
+          sp.web.lists
+            .getByTitle(LIST.availabilityBlocks)
+            .items.select(...SELECT_BLOCK)
+            .expand(...EXPAND_BLOCK)
+            .filter(`FromDateTime lt '${toIso(to)}' and ToDateTime gt '${toIso(from)}'`)
+            .top(500)(),
+        ]);
+
+        // A rejected or cancelled request occupies nobody, so it is not shown.
+        const requests = (requestRows as any[])
+          .map(toRequest)
+          .filter(
+            (r) =>
+              r.status !== REQUEST_STATUS.Rejected && r.status !== REQUEST_STATUS.Cancelled,
+          );
+
+        const withTrip = requests
+          .filter(
+            (r) => r.status === REQUEST_STATUS.Allocated || r.status === REQUEST_STATUS.Completed,
+          )
+          .map((r) => r.id);
+
+        const trips: ITripAssignment[] = [];
+        for (let i = 0; i < withTrip.length; i += 40) {
+          const chunk = withTrip.slice(i, i + 40);
+          const rows: any[] = await sp.web.lists
+            .getByTitle(LIST.tripAssignments)
+            .items.select(...SELECT_TRIP)
+            .expand(...EXPAND_TRIP)
+            .filter(chunk.map((id) => `RequestId eq ${id}`).join(' or '))
+            .top(500)();
+          rows.map(toTrip).forEach((t) => trips.push(t));
+        }
+
+        // The trip that counts is the request's current one: never a trip a
+        // driver cancelled, and the newest if there were several.
+        const tripFor = (requestId: number): ITripAssignment | undefined =>
+          trips
+            .filter(
+              (t) => t.request?.id === requestId && t.tripStatus !== TRIP_STATUS.Cancelled,
+            )
+            .sort((a, b) => b.id - a.id)[0];
+
+        return {
+          entries: requests.map((request) => ({ request, trip: tripFor(request.id) })),
+          blocks: (blockRows as any[]).map(toAvailabilityBlock),
+        };
       },
     );
   }

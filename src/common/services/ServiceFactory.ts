@@ -32,12 +32,20 @@ export interface IBootstrapResult {
  */
 let pending: Promise<IBootstrapResult> | undefined;
 
+/** The web part context the cached services were built with. */
+let owner: WebPartContext | undefined;
+
 /**
- * Called from each web part's onInit. Idempotent: five web parts on one page
- * share one PnPjs instance, one user lookup and one master-data cache.
+ * Called from each web part's onInit. Idempotent for the same context.
+ *
+ * A NEW context means SharePoint has navigated to a page without reloading
+ * (this module stays loaded, the previous page's web part is disposed). The
+ * cached services hold the old context, so they are rebuilt rather than
+ * reused - reusing them is what made a page fail until it was refreshed.
  */
 export async function bootstrap(context: WebPartContext): Promise<IBootstrapResult> {
-  if (!pending) {
+  if (!pending || owner !== context) {
+    owner = context;
     pending = (async (): Promise<IBootstrapResult> => {
       initSP(context);
       ensureFonts(context.pageContext.web.absoluteUrl);
@@ -61,8 +69,10 @@ export async function bootstrap(context: WebPartContext): Promise<IBootstrapResu
 
     // A failed bootstrap must not be cached, or every later web part on the
     // page inherits the failure with no way to retry.
-    pending.catch(() => {
-      pending = undefined;
+    const attempt = pending;
+    attempt.catch(() => {
+      // Only forget it if a newer bootstrap has not already replaced it.
+      if (pending === attempt) pending = undefined;
     });
   }
 
@@ -72,4 +82,5 @@ export async function bootstrap(context: WebPartContext): Promise<IBootstrapResu
 /** Forces the next bootstrap to re-read. */
 export function resetServices(): void {
   pending = undefined;
+  owner = undefined;
 }

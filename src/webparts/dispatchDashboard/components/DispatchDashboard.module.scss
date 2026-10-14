@@ -93,13 +93,13 @@ $frame-edge: rgba($brand-dark, 0.6);
 .title {
   margin: 0;
   font-family: $font-heading;
-  font-size: 22px;
+  font-size: 19px;
   font-weight: $weight-heading;
   color: $white;
   letter-spacing: 0.2px;
 
   @media (max-width: $bp-narrow) {
-    font-size: 17px;
+    font-size: 16px;
   }
 }
 
@@ -119,6 +119,45 @@ $frame-edge: rgba($brand-dark, 0.6);
   }
 
   button { min-height: 34px; padding: 6px 10px; }
+}
+
+// List View | Calendar View
+.viewSwitch {
+  display: inline-flex;
+  padding: 3px;
+  background: $white;
+  border: 1px solid $border;
+  border-radius: 10px;
+
+  .toolbar & button {
+    min-height: 30px;
+    padding: 4px 12px;
+  }
+}
+
+.viewButton {
+  @include focus-ring;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: $font-body;
+  font-size: $size-caption;
+  font-weight: $weight-button;
+  color: $brand-dark;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color $transition, color $transition;
+
+  &:hover { background: $brand-tint; }
+}
+
+.viewButtonActive,
+.viewButtonActive:hover {
+  color: $white;
+  background: $brand-dark;
 }
 
 .refreshed {
@@ -277,6 +316,20 @@ $frame-edge: rgba($brand-dark, 0.6);
       'counters counters avail'
       'ongoing pending avail';
   }
+}
+
+// Calendar View: the counters, then the calendar across the full width.
+// Comes after .grid's breakpoints in the source, so it wins at every width.
+.gridCalendar {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'counters'
+    'calendar';
+}
+
+.calendarArea {
+  grid-area: calendar;
+  min-width: 0;
 }
 
 .counters { grid-area: counters; }

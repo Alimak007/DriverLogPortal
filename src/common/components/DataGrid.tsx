@@ -13,6 +13,7 @@
 import * as React from 'react';
 import styles from './Shared.module.scss';
 import { Button } from './Shared';
+import { Icon } from './Icons';
 
 export interface IColumn<T> {
   key: string;
@@ -37,6 +38,21 @@ export interface IDataGridProps<T> {
   /** Rows pinned to the top carry an amber edge AND their status in words. */
   isPinned?: (row: T) => boolean;
   emptyMessage?: string;
+  /** Rows per page. Defaults to 10; 0 shows every row on one page. */
+  pageSize?: number;
+}
+
+/** The page numbers to offer: the first, the last, and two either side of the current one. */
+function pageList(current: number, count: number): (number | 'gap')[] {
+  const out: (number | 'gap')[] = [];
+  for (let p = 1; p <= count; p++) {
+    if (p === 1 || p === count || Math.abs(p - current) <= 1) {
+      out.push(p);
+    } else if (out[out.length - 1] !== 'gap') {
+      out.push('gap');
+    }
+  }
+  return out;
 }
 
 export function DataGrid<T>(props: IDataGridProps<T>): React.ReactElement {
@@ -48,10 +64,12 @@ export function DataGrid<T>(props: IDataGridProps<T>): React.ReactElement {
     rowKey,
     isPinned,
     emptyMessage,
+    pageSize = 10,
   } = props;
 
   const [openFilter, setOpenFilter] = React.useState<string | undefined>(undefined);
   const [selected, setSelected] = React.useState<Record<string, string[]>>({});
+  const [page, setPage] = React.useState(1);
 
   const regionRef = React.useRef<HTMLDivElement>(null);
 
@@ -95,6 +113,28 @@ export function DataGrid<T>(props: IDataGridProps<T>): React.ReactElement {
     return pinned.concat(rest);
   }, [filtered, isPinned]);
 
+  // Paging. A new filter starts again at page 1. A refresh that shortens the
+  // list keeps the reader where they were, or on the last page that remains.
+  const paged = pageSize > 0;
+  const pageCount = paged ? Math.max(1, Math.ceil(ordered.length / pageSize)) : 1;
+  const current = Math.min(page, pageCount);
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [selected]);
+
+  const visible = paged
+    ? ordered.slice((current - 1) * pageSize, current * pageSize)
+    : ordered;
+  const firstShown = ordered.length === 0 ? 0 : (current - 1) * pageSize + 1;
+  const lastShown = (current - 1) * pageSize + visible.length;
+
+  const goTo = (p: number): void => {
+    setPage(Math.max(1, Math.min(pageCount, p)));
+    // Back to the top of the table, so the new page is read from its start.
+    if (regionRef.current) regionRef.current.scrollTop = 0;
+  };
+
   const distinctValues = (column: IColumn<T>): string[] => {
     if (!column.filterValue) return [];
     const set = new Set<string>();
@@ -126,6 +166,7 @@ export function DataGrid<T>(props: IDataGridProps<T>): React.ReactElement {
     : styles['caption-visible'];
 
   return (
+    <>
     <div
       className={[styles.gridRegion, openFilter ? styles.gridRegionFiltering : '']
         .filter(Boolean)
@@ -141,6 +182,7 @@ export function DataGrid<T>(props: IDataGridProps<T>): React.ReactElement {
           {ordered.length !== rows.length
             ? ` — showing ${ordered.length} of ${rows.length} rows`
             : ''}
+          {pageCount > 1 ? `, page ${current} of ${pageCount}` : ''}
         </caption>
         <thead>
           <tr>
@@ -220,7 +262,7 @@ export function DataGrid<T>(props: IDataGridProps<T>): React.ReactElement {
               </td>
             </tr>
           ) : (
-            ordered.map((row) => (
+            visible.map((row) => (
               <tr
                 key={rowKey(row)}
                 className={isPinned && isPinned(row) ? styles.rowPinned : undefined}
@@ -239,6 +281,55 @@ export function DataGrid<T>(props: IDataGridProps<T>): React.ReactElement {
         </tbody>
       </table>
     </div>
+
+    {pageCount > 1 ? (
+      <nav className={styles.pager} aria-label={`${caption}: pages`}>
+        <span className={styles.pagerInfo} aria-live="polite">
+          {`Showing ${firstShown}–${lastShown} of ${ordered.length}`}
+        </span>
+        <span className={styles.pagerButtons}>
+          <button
+            type="button"
+            className={styles.pagerButton}
+            onClick={() => goTo(current - 1)}
+            disabled={current === 1}
+            aria-label="Previous page"
+          >
+            <Icon name="chevronLeft" size={14} />
+          </button>
+          {pageList(current, pageCount).map((p, i) =>
+            p === 'gap' ? (
+              <span key={`gap${i}`} className={styles.pagerGap} aria-hidden="true">
+                &hellip;
+              </span>
+            ) : (
+              <button
+                key={p}
+                type="button"
+                className={[styles.pagerButton, p === current ? styles.pagerButtonActive : '']
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => goTo(p)}
+                aria-current={p === current ? 'page' : undefined}
+                aria-label={`Page ${p}`}
+              >
+                {p}
+              </button>
+            ),
+          )}
+          <button
+            type="button"
+            className={styles.pagerButton}
+            onClick={() => goTo(current + 1)}
+            disabled={current === pageCount}
+            aria-label="Next page"
+          >
+            <Icon name="chevronRight" size={14} />
+          </button>
+        </span>
+      </nav>
+    ) : undefined}
+    </>
   );
 }
 

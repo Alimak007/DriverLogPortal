@@ -252,6 +252,66 @@
 // otherwise be cut off and Clear and Close could not be reached.
 .gridRegionFiltering { min-height: 380px; }
 
+// Pagination, under the grid: "Showing 11–20 of 34" and the page buttons.
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: $gap-sm;
+  padding: $gap-sm 2px 0;
+  font-family: $font-body;
+}
+
+.pagerInfo {
+  @include caption;
+}
+
+.pagerButtons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.pagerButton {
+  @include focus-ring;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  font-family: $font-body;
+  font-size: 13px;
+  font-weight: $weight-button;
+  color: $brand-dark;
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-action;
+  cursor: pointer;
+  transition: background-color $transition;
+
+  &:hover:not(:disabled) { background: $brand-tint; }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+.pagerButtonActive,
+.pagerButtonActive:hover:not(:disabled) {
+  color: $brand-light;
+  background: $brand-dark;
+  border-color: $brand-dark;
+}
+
+.pagerGap {
+  padding: 0 2px;
+  color: $muted;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

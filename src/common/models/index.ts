@@ -284,6 +284,23 @@ export interface ITripCard {
   vehiclePlate: string;
 }
 
+/**
+ * One request on the Coordinator's calendar: placed by its required time, on
+ * the row of the driver and vehicle its trip is assigned to. A request with no
+ * trip yet sits in the unassigned lane.
+ */
+export interface ICalendarEntry {
+  request: ITransportRequest;
+  trip?: ITripAssignment;
+}
+
+/** Everything the calendar shows for one period. */
+export interface ICalendarData {
+  entries: ICalendarEntry[];
+  /** Leave, maintenance and other blocks overlapping the period. */
+  blocks: IAvailabilityBlock[];
+}
+
 /** One batched read behind the whole Coordinator dashboard. */
 export interface IDispatchSnapshot {
   counters: {
@@ -295,6 +312,8 @@ export interface IDispatchSnapshot {
     allocatedPairs: number;
   };
   ongoingTrips: ITripCard[];
+  /** Trips completed in the selected period, latest drop first. */
+  completedTrips: ITripCard[];
   pendingRequests: ITransportRequest[];
   drivers: IDriver[];
   vehicles: IVehicle[];

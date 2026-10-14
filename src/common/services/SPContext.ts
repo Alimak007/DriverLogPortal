@@ -17,11 +17,23 @@ import '@pnp/sp/site-groups/web';
 import '@pnp/sp/batching';
 
 let instance: SPFI | undefined;
+let boundTo: WebPartContext | undefined;
 let webUrl = '';
 
+/**
+ * Binds PnPjs to a web part's context - re-binding whenever the context is a
+ * new one.
+ *
+ * SharePoint moves between pages of a site WITHOUT a full reload, and keeps
+ * this module loaded. Coming back to a page already visited gives the web part
+ * a NEW context while the old one is disposed. Binding only once meant every
+ * request after that went through the dead context, and failed until the
+ * browser was refreshed.
+ */
 export function initSP(context: WebPartContext): SPFI {
-  if (!instance) {
+  if (!instance || boundTo !== context) {
     instance = spfi().using(SPFx(context));
+    boundTo = context;
     webUrl = context.pageContext.web.absoluteUrl;
   }
   return instance;
@@ -72,6 +84,10 @@ export class PortalError extends Error {
     cause?: unknown,
   ) {
     super(`${whatFailed} ${whatToDo}`);
+    // The build targets ES5, where extending Error loses the subclass:
+    // without this, `instanceof PortalError` is always false and every
+    // failure showed as a bare "Something went wrong" with no reference.
+    Object.setPrototypeOf(this, PortalError.prototype);
     this.name = 'PortalError';
     this.whatFailed = whatFailed;
     this.whatToDo = whatToDo;

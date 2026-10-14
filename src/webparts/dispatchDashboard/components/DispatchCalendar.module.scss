@@ -1,0 +1,647 @@
+@import '../../../common/styles/tokens';
+
+// =============================================================================
+// Dispatch Dashboard - Calendar View
+// =============================================================================
+// Built to the client's reference: a date bar with Day / Week / Month on the
+// right, a Drivers / Vehicles switch, then one row per resource with the hours
+// across the top. Trips are tinted blocks in the state colours; leave is a
+// hatched grey band. The board scrolls sideways inside its card on a narrow
+// screen - the page itself never does.
+
+$ink: #1F1F1F;
+$soft: #6B6B6B;
+$line: #ECE7E1;
+$label-width: 210px;
+
+// The reference's three trip colours: soft tints, a strong left edge, dark text.
+$amber-bg: #FFF4DC;
+$amber-edge: #E0A526;
+$green-bg: #E3F6E8;
+$green-edge: $accent-green;
+$blue-bg: $accent-blue-tint;
+$blue-edge: #4A7BD0;
+$done-bg: #F2F2F2;
+$done-edge: #9B9B9B;
+$off-bg: #EFEFEF;
+$off-stripe: #DCDCDC;
+
+.calendar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  font-family: $font-body;
+  color: $ink;
+  background: $white;
+  border: 1px solid $line;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+
+  * { box-sizing: border-box; }
+}
+
+// -----------------------------------------------------------------------------
+// Toolbars
+// -----------------------------------------------------------------------------
+
+.toolbar,
+.subbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.navButton,
+.todayButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  min-width: 34px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: $weight-button;
+  color: $brand-dark;
+  background: $white;
+  border: 1px solid $border;
+  border-radius: 8px;
+  cursor: pointer;
+
+  &:hover { background: $brand-light; }
+  &:focus-visible { outline: 2px solid $status-blue; outline-offset: 1px; }
+}
+
+.navButton { padding: 0; }
+
+.dateInput {
+  height: 34px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: $ink;
+  background: $white;
+  border: 1px solid $border;
+  border-radius: 8px;
+
+  &:focus-visible { outline: 2px solid $status-blue; outline-offset: 1px; }
+}
+
+.rangeLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: $brand-dark;
+}
+
+.segment {
+  display: inline-flex;
+  padding: 3px;
+  background: $brand-light;
+  border: 1px solid $border;
+  border-radius: 10px;
+}
+
+.segmentButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: $weight-button;
+  color: $brand-dark;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+
+  &:hover { background: rgba($brand-dark, 0.06); }
+  &:focus-visible { outline: 2px solid $status-blue; outline-offset: 1px; }
+}
+
+.segmentActive,
+.segmentActive:hover {
+  color: $white;
+  background: $brand-dark;
+}
+
+.hint {
+  font-size: 12px;
+  color: $soft;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: $brand-dark;
+  background: $brand-tint;
+  border: 1px solid $border;
+  border-radius: 8px;
+}
+
+.noticeClose {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover { background: rgba($brand-dark, 0.08); }
+}
+
+// -----------------------------------------------------------------------------
+// The board
+// -----------------------------------------------------------------------------
+
+.scroller {
+  overflow-x: auto;
+  border: 1px solid $line;
+  border-radius: 10px;
+}
+
+.board {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: $label-width minmax(0, 1fr);
+  border-bottom: 1px solid $line;
+
+  &:last-child { border-bottom: 0; }
+}
+
+.rowOver {
+  background: rgba($status-blue, 0.06);
+  box-shadow: inset 0 0 0 2px rgba($status-blue, 0.45);
+}
+
+.headRow {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #FAFAFA;
+}
+
+.unassignedRow {
+  background: rgba($amber-bg, 0.45);
+}
+
+.label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: $white;
+  border-right: 1px solid $line;
+
+  .headRow & { background: #FAFAFA; }
+  .unassignedRow & { background: #FFFBF1; }
+}
+
+.headLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: $soft;
+}
+
+.avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+  font-weight: 700;
+  color: $brand-dark;
+  background: $brand-mid;
+  border-radius: 50%;
+}
+
+.avatarAmber {
+  color: #7A5300;
+  background: $amber-bg;
+}
+
+.labelText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  strong,
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  span {
+    font-size: 11px;
+    color: $soft;
+  }
+}
+
+// Day view: hours across, trips placed by time.
+.dayTrack {
+  position: relative;
+  min-height: 40px;
+}
+
+.hourLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: $line;
+}
+
+.hourLabel {
+  position: absolute;
+  top: 50%;
+  padding-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: $soft;
+  transform: translateY(-50%);
+}
+
+.band {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #777777;
+  background: repeating-linear-gradient(135deg, $off-bg 0 8px, $off-stripe 8px 10px);
+  border-radius: 6px;
+}
+
+// Week and month views: one cell per day.
+.cellTrack {
+  display: grid;
+  min-height: 40px;
+}
+
+.dayHead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: $soft;
+  border-left: 1px solid $line;
+}
+
+.dayHeadToday {
+  color: $brand-dark;
+  background: $brand-light;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 4px;
+  border-left: 1px solid $line;
+}
+
+.cellBlocked {
+  background: repeating-linear-gradient(135deg, $off-bg 0 8px, $off-stripe 8px 10px);
+}
+
+// -----------------------------------------------------------------------------
+// Trip blocks
+// -----------------------------------------------------------------------------
+
+.event {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 5px 8px;
+  overflow: hidden;
+  font: inherit;
+  text-align: left;
+  color: $ink;
+  border: 0;
+  border-left: 4px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+
+  .dayTrack & {
+    position: absolute;
+    height: 56px;
+  }
+
+  &[draggable='true'] { cursor: grab; }
+  &:hover { filter: brightness(0.97); }
+  &:focus-visible { outline: 2px solid $status-blue; outline-offset: 1px; }
+}
+
+.eventCompact {
+  padding: 2px 6px;
+  border-left-width: 3px;
+}
+
+.eventTitle {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  .eventCompact & { font-size: 11px; }
+
+  // Room for the "Moved" tag.
+  .eventStaged:not(.eventCompact) & { padding-right: 48px; }
+}
+
+.eventLine {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #444444;
+}
+
+.eventStaged {
+  outline: 2px dashed $brand-dark;
+  outline-offset: -2px;
+}
+
+.eventDragging { opacity: 0.45; }
+
+// In a month cell the dashed outline alone marks a move.
+.eventCompact .stagedMark { display: none; }
+
+.stagedMark {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  padding: 0 5px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: $white;
+  background: $brand-dark;
+  border-radius: 999px;
+}
+
+.state_awaiting { background: $amber-bg; border-left-color: $amber-edge; }
+.state_confirmed { background: $green-bg; border-left-color: $green-edge; }
+.state_road { background: $blue-bg; border-left-color: $blue-edge; }
+.state_done { background: $done-bg; border-left-color: $done-edge; color: $soft; }
+
+.empty {
+  padding: 24px;
+  font-size: 13px;
+  text-align: center;
+  color: $soft;
+}
+
+// -----------------------------------------------------------------------------
+// Legend
+// -----------------------------------------------------------------------------
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 12px;
+  color: $soft;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendDot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.dot_awaiting { background: $amber-bg; border: 2px solid $amber-edge; }
+.dot_confirmed { background: $green-bg; border: 2px solid $green-edge; }
+.dot_road { background: $blue-bg; border: 2px solid $blue-edge; }
+.dot_done { background: $done-bg; border: 2px solid $done-edge; }
+.dot_off { background: repeating-linear-gradient(135deg, $off-bg 0 3px, $off-stripe 3px 5px); border: 1px solid $off-stripe; }
+
+// -----------------------------------------------------------------------------
+// Review before saving
+// -----------------------------------------------------------------------------
+
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: $brand-light;
+  border: 1px solid $border;
+  border-radius: 10px;
+}
+
+.reviewHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+
+  strong {
+    font-size: 14px;
+    color: $brand-dark;
+  }
+
+  span {
+    font-size: 12px;
+    color: $soft;
+  }
+}
+
+.reviewList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    font-size: 13px;
+    background: $white;
+    border: 1px solid $line;
+    border-radius: 8px;
+    overflow-wrap: anywhere;
+  }
+}
+
+.reviewFailed {
+  border-color: rgba($status-red, 0.5) !important;
+}
+
+.reviewWarn {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: $status-amber;
+}
+
+.reviewRemove {
+  @extend .noticeClose;
+  color: $soft;
+}
+
+.reasonLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: $brand-dark;
+}
+
+.reviewActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+// -----------------------------------------------------------------------------
+// Trip details popup
+// -----------------------------------------------------------------------------
+
+.popup {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 310px;
+  max-width: calc(100vw - 16px);
+  padding: 14px;
+  background: $white;
+  border: 1px solid $line;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+}
+
+.popupHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  strong {
+    flex: 1;
+    font-size: 15px;
+  }
+}
+
+.statePill {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  border-left-width: 0;
+  border-radius: 999px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 12px;
+
+  dt {
+    font-weight: 600;
+    color: $soft;
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.moveLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: $brand-dark;
+}
+
+.moveSelect {
+  height: 34px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  color: $ink;
+  background: $white;
+  border: 1px solid $border;
+  border-radius: 8px;
+}
+
+@media (max-width: $bp-narrow) {
+  .calendar { padding: 12px; }
+
+  .row { grid-template-columns: 150px minmax(0, 1fr); }
+
+  .rangeLabel { flex-basis: 100%; }
+}
