@@ -12,23 +12,29 @@
  * Trip progress is conveyed by the status timeline above this, in words.
  *
  * The straight line is deliberate too: it is a connector between two points,
- * not a driving route. Drawing a road-following route would need a Routing
- * API call and would imply an ETA the solution does not calculate.
+ * not a driving route. Google's Directions API could now return the real road
+ * path - the key is entitled for it - but drawing one would imply an ETA the
+ * solution does not calculate and a distance nothing stores. That is a product
+ * decision, not a missing feature.
  */
 
-import * as L from 'leaflet';
 import * as React from 'react';
 import {
-  addTileLayer,
+  addMarker,
+  createMap,
   DROPOFF_FILL,
-  ensureLeafletCss,
-  makePin,
+  ensureGoogleMaps,
+  fitTwoPoints,
+  IMapMarker,
   PICKUP_FILL,
-} from './leafletBase';
+  refreshMapSize,
+} from './googleMapsBase';
 import styles from './BookARide.module.scss';
 
 export interface IRouteMapProps {
   apiKey: string;
+  /** Cloud Map ID. Optional - without it the classic marker is used. */
+  mapId?: string;
   /** True when the screen showing this map is actually visible. */
   isActive: boolean;
   pickupLat: number;
@@ -41,84 +47,135 @@ export interface IRouteMapProps {
 
 export function RouteMap(props: IRouteMapProps): JSX.Element {
   const {
-    apiKey, isActive,
+    apiKey, mapId, isActive,
     pickupLat, pickupLng, pickupText,
     dropOffLat, dropOffLng, dropOffText,
   } = props;
 
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const mapRef = React.useRef<L.Map | undefined>(undefined);
-  const [tilesFailed, setTilesFailed] = React.useState(false);
-  const [usingFallbackTiles, setUsingFallbackTiles] = React.useState(false);
+  const mapRef = React.useRef<google.maps.Map | undefined>(undefined);
+  const markersRef = React.useRef<IMapMarker[]>([]);
+  const lineRef = React.useRef<google.maps.Polyline | undefined>(undefined);
 
-  // --- create once, and DESTROY ON UNMOUNT ---------------------------------
+  const [ready, setReady] = React.useState(false);
+  const [mapFailed, setMapFailed] = React.useState(false);
+
+  // --- load the API once (shared with the picker) --------------------------
   React.useEffect(() => {
-    ensureLeafletCss();
-    if (!containerRef.current || mapRef.current) return undefined;
+    let cancelled = false;
+    ensureGoogleMaps(apiKey)
+      .then(() => {
+        if (!cancelled) setReady(true);
+      })
+      .catch((e: Error) => {
+        console.error('[FleetPortal] Google Maps could not load', e);
+        if (!cancelled) setMapFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey]);
 
-    const map = L.map(containerRef.current, {
-      center: [pickupLat, pickupLng],
+  // --- draw once, and tear down on unmount ---------------------------------
+  React.useEffect(() => {
+    if (!ready || !containerRef.current || mapRef.current) return undefined;
+
+    const map = createMap({
+      container: containerRef.current,
+      centre: { lat: pickupLat, lng: pickupLng },
       zoom: 12,
-      zoomControl: true,
+      mapId,
       // Read-only: this is a picture of the trip, not a control.
-      scrollWheelZoom: false,
+      scrollwheel: false,
     });
 
-    addTileLayer(map, apiKey, {
-      onFallback: () => setUsingFallbackTiles(true),
-      onFailure: () => setTilesFailed(true),
-    });
+    markersRef.current = [
+      addMarker({
+        map,
+        lat: pickupLat,
+        lng: pickupLng,
+        fill: PICKUP_FILL,
+        label: 'Pickup point',
+        clickable: false,
+      }),
+      addMarker({
+        map,
+        lat: dropOffLat,
+        lng: dropOffLng,
+        fill: DROPOFF_FILL,
+        label: 'Destination',
+        clickable: false,
+      }),
+    ];
 
-    L.marker([pickupLat, pickupLng], {
-      icon: makePin(PICKUP_FILL, 'Pickup point'),
-      interactive: false,
-      keyboard: false,
-    })
-      .addTo(map)
-      .bindPopup(pickupText);
-
-    L.marker([dropOffLat, dropOffLng], {
-      icon: makePin(DROPOFF_FILL, 'Destination'),
-      interactive: false,
-      keyboard: false,
-    })
-      .addTo(map)
-      .bindPopup(dropOffText);
-
-    L.polyline(
-      [
-        [pickupLat, pickupLng],
-        [dropOffLat, dropOffLng],
+    /**
+     * Dashed, via a repeating symbol.
+     *
+     * Google has no strokeDasharray: a dashed line is a fully transparent
+     * stroke plus a dash glyph repeated along it. The dashes carry the meaning
+     * here - they are what stops this reading as a driving route.
+     *
+     * The numbers reproduce Leaflet's `dashArray: '6 6'` exactly. The glyph
+     * path spans 2 units, so `scale: 3` draws a 6px dash, and `repeat: 12px`
+     * leaves a 6px gap after it. Changing one without the other turns the line
+     * solid or scatters it into dots.
+     */
+    lineRef.current = new google.maps.Polyline({
+      map,
+      path: [
+        { lat: pickupLat, lng: pickupLng },
+        { lat: dropOffLat, lng: dropOffLng },
       ],
-      { color: '#2F5D9F', weight: 3, opacity: 0.85, dashArray: '6 6' },
-    ).addTo(map);
+      strokeOpacity: 0,
+      clickable: false,
+      icons: [
+        {
+          icon: {
+            path: 'M 0,-1 0,1',
+            strokeColor: '#2F5D9F',
+            strokeOpacity: 0.85,
+            strokeWeight: 3,
+            scale: 3,
+          },
+          offset: '0',
+          repeat: '12px',
+        },
+      ],
+    });
 
-    map.fitBounds(
-      L.latLngBounds([
-        [pickupLat, pickupLng],
-        [dropOffLat, dropOffLng],
-      ]),
-      { padding: [34, 34], maxZoom: 14 },
+    fitTwoPoints(
+      map,
+      { lat: pickupLat, lng: pickupLng },
+      { lat: dropOffLat, lng: dropOffLng },
+      34,
+      14,
     );
 
     mapRef.current = map;
 
     return () => {
-      // Without this, returning to the screen a second time throws
-      // "Map container is already initialized" and it renders blank.
-      map.remove();
+      // Google has no map.remove(). Detach everything that holds a listener,
+      // or returning to this screen a second time leaves the old handlers
+      // bound to a node React has already thrown away.
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      if (lineRef.current) {
+        lineRef.current.setMap(null);
+        lineRef.current = undefined;
+      }
+      google.maps.event.clearInstanceListeners(map);
       mapRef.current = undefined;
     };
     // The trip's endpoints do not change while this is on screen.
-  }, []);
+  }, [ready]);
 
   // --- the map has no size until the screen is actually visible ------------
   React.useEffect(() => {
     if (!isActive || !mapRef.current) return undefined;
     const map = mapRef.current;
-    const handle = window.setTimeout(() => map.invalidateSize(), 0);
+    const handle = window.setTimeout(() => refreshMapSize(map), 0);
     return () => window.clearTimeout(handle);
-  }, [isActive]);
+  }, [isActive, ready]);
 
   return (
     <section className={styles.routeMapCard} aria-label="Your route">
@@ -131,10 +188,12 @@ export function RouteMap(props: IRouteMapProps): JSX.Element {
           role="img"
           aria-label={`Route from ${pickupText} to ${dropOffText}`}
         />
-        {tilesFailed ? (
+        {mapFailed ? (
           <div className={styles.mapFallback}>
             The map could not load. Your pickup and destination are below.
           </div>
+        ) : !ready ? (
+          <div className={styles.mapFallback}>Loading the map&hellip;</div>
         ) : undefined}
       </div>
 
@@ -157,12 +216,6 @@ export function RouteMap(props: IRouteMapProps): JSX.Element {
           </span>
         </li>
       </ul>
-
-      {usingFallbackTiles ? (
-        <p className={styles.routeMapNote}>
-          Showing OpenStreetMap &mdash; the TomTom key is not enabled for maps.
-        </p>
-      ) : undefined}
     </section>
   );
 }

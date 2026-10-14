@@ -63,15 +63,18 @@ export interface IBookARideProps {
   /** Property to book against. Defaults to the requester's own property. */
   defaultPropertyId: number;
   /**
-   * TomTom key for the map tiles and the place search.
+   * Google Maps key for the basemap, the place search and the reverse geocode.
    *
    * The SPFx bundle is readable by any authenticated user, so this key IS
    * extractable. That is expected for a browser key - but it must be
-   * restricted by HTTP referrer to the SharePoint domain in the TomTom
-   * developer portal, and a daily usage alert must be set. Do not ship
-   * without both.
+   * restricted by HTTP referrer to the SharePoint domain AND by API, with a
+   * budget alert set. This key is attached to a billing account, so an
+   * unrestricted one runs up a bill rather than hitting a rate limit. Do not
+   * ship without all three.
    */
-  tomtomApiKey: string;
+  googleMapsApiKey: string;
+  /** Cloud Map ID. Optional - without it the classic marker is used. */
+  googleMapsMapId?: string;
   /** How long screen 5 waits for a driver before offering to carry on. */
   processingPollMs: number;
   /** The My Bookings page. The link to it is left out when this is not given. */
@@ -170,7 +173,7 @@ const emptyDraft = (): IDraft => ({
 export const BookARide: React.FC<IBookARideProps> = (props) => {
   const {
     services, user, bootstrapError, defaultPropertyId, processingPollMs,
-    myBookingsUrl, tomtomApiKey,
+    myBookingsUrl, googleMapsApiKey, googleMapsMapId,
   } = props;
 
   const [screen, setScreen] = React.useState<ScreenIndex>(1);
@@ -500,7 +503,8 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
             draft={draft}
             setDraft={setDraft}
             validation={validation}
-            apiKey={tomtomApiKey}
+            apiKey={googleMapsApiKey}
+            mapId={googleMapsMapId}
             isActive={screen === 1}
             area={area}
           />
@@ -541,7 +545,12 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
         ) : undefined}
 
         {screen === 7 && tracked ? (
-          <ScreenTrack result={tracked} apiKey={tomtomApiKey} onBookAnother={startOver} />
+          <ScreenTrack
+            result={tracked}
+            apiKey={googleMapsApiKey}
+            mapId={googleMapsMapId}
+            onBookAnother={startOver}
+          />
         ) : undefined}
 
           </div>
@@ -640,10 +649,12 @@ function ScreenWhere({
   setDraft,
   validation,
   apiKey,
+  mapId,
   isActive,
   area,
 }: IScreenProps & {
   apiKey: string;
+  mapId?: string;
   isActive: boolean;
   area: { centre: { lat: number; lng: number }; radiusKm: number };
 }): JSX.Element {
@@ -658,6 +669,7 @@ function ScreenWhere({
     <div className={styles.screen}>
       <MapPicker
         apiKey={apiKey}
+        mapId={mapId}
         isActive={isActive}
         centre={area.centre}
         radiusKm={area.radiusKm}
@@ -1503,9 +1515,10 @@ function ScreenConfirmed({ result, myBookingsUrl, onTrack, onBookAnother }: {
  * remain on screen THROUGHOUT, because that is what a requester at a kerbside
  * actually needs in order to identify the car that pulls up.
  */
-function ScreenTrack({ result, apiKey, onBookAnother }: {
+function ScreenTrack({ result, apiKey, mapId, onBookAnother }: {
   result: IRequestWithTrip;
   apiKey: string;
+  mapId?: string;
   onBookAnother: () => void;
 }): JSX.Element {
   const { request, trip } = result;
@@ -1587,6 +1600,7 @@ function ScreenTrack({ result, apiKey, onBookAnother }: {
           request.dropOffLng !== undefined ? (
             <RouteMap
               apiKey={apiKey}
+              mapId={mapId}
               isActive
               pickupLat={request.pickupLat}
               pickupLng={request.pickupLng}

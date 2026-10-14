@@ -1141,8 +1141,8 @@ $tap: 46px;              // The height of every primary action
 // =============================================================================
 // The map picker
 // =============================================================================
-// Destinations are no longer a list: the requester searches TomTom live and
-// drops a pin anywhere in the UAE.
+// Destinations are no longer a list: the requester searches Google Places live
+// and drops a pin anywhere in the UAE.
 
 .mapPicker {
   display: flex;
@@ -1158,7 +1158,8 @@ $tap: 46px;              // The height of every primary action
   position: relative;
 }
 
-// A fixed height, because a Leaflet container with no height renders nothing.
+// A fixed height, because a map container with no height renders nothing -
+// true of Google Maps exactly as it was of Leaflet.
 // On a narrow screen the map sits above the fields rather than beside them.
 .mapCanvas {
   width: 100%;
@@ -1193,12 +1194,25 @@ $tap: 46px;              // The height of every primary action
   color: $muted;
 }
 
-// Leaflet writes this class onto the marker element itself, outside any CSS
-// module, so it has to be global. Passing our own className already drops
-// Leaflet's `leaflet-div-icon`; this is belt and braces against the white box.
+// The pin element handed to AdvancedMarkerElement as its `content`. It is
+// created in googleMapsBase.ts with document.createElement, so it never passes
+// through the CSS module and the class has to be global.
+//
+// `line-height: 0` is the one that matters: the SVG is an inline element, so
+// without it the marker container keeps a few pixels of text leading underneath
+// and the pin floats above the point it is meant to mark.
 :global(.fleet-pin) {
   background: none;
   border: none;
+  line-height: 0;
+  cursor: grab;
+}
+
+// Google renders its own focus ring on the marker container. Keep it - it is
+// the only visible indicator for a keyboard user dragging a pin.
+:global(.fleet-pin svg) {
+  display: block;
+  pointer-events: none;
 }
 
 .placeFields {
@@ -1286,7 +1300,19 @@ $tap: 46px;              // The height of every primary action
 
   &:hover { background: $brand-tint; }
 
+  &:disabled { opacity: 0.6; cursor: default; }
+
   span { min-width: 0; overflow-wrap: anywhere; }
+}
+
+// Google splits a prediction into a main line and a secondary one - "Marina
+// Mall" above "Breakwater, Abu Dhabi". TomTom returned one flat string, so
+// this is new: the district belongs under the name, not beside it, or long
+// results wrap into an unreadable block.
+.placeOptionMeta {
+  display: block;
+  font-size: $size-hint;
+  color: $muted;
 }
 
 .placeEmpty {
@@ -1369,10 +1395,3 @@ $tap: 46px;              // The height of every primary action
   border-radius: $radius-badge;
 }
 
-.routeMapNote {
-  margin: 0;
-  padding: 0 14px 12px;
-  font-family: $font-body;
-  font-size: $size-hint;
-  color: $muted;
-}

@@ -107,23 +107,36 @@ export interface IAppConfig {
   };
 
   /**
-   * TomTom, for the map tiles and the place search on the booking form.
+   * Google Maps, for the basemap, the place search and the reverse geocode
+   * after a pin drag.
    *
    * THIS KEY SHIPS IN THE BUNDLE, which any authenticated user can read and
-   * extract. That is accepted for a browser key, but it means two things are
+   * extract. That is accepted for a browser key, but it means three things are
    * not optional:
    *
-   *   1. Restrict it by HTTP REFERRER to the SharePoint domain in the TomTom
-   *      developer portal. Without that, anyone who reads the bundle can
-   *      spend the quota from anywhere.
-   *   2. Set a DAILY USAGE ALERT, so exhaustion reaches the key owner rather
-   *      than reaching a requester as "Location search is unavailable".
+   *   1. Restrict it by HTTP REFERRER to the SharePoint domain in the Google
+   *      Cloud console. Without that, anyone who reads the bundle can spend
+   *      the quota from anywhere - and unlike the old TomTom key, this one is
+   *      attached to a billing account, so the ceiling is a bill rather than a
+   *      429.
+   *   2. Restrict it by API to exactly the three in use: Maps JavaScript,
+   *      Places (New) and Geocoding. A key that can also call Routes or
+   *      Directions is a wider blast radius than this solution needs.
+   *   3. Set a BUDGET ALERT and a per-API quota cap, so runaway usage reaches
+   *      the key owner rather than reaching a requester as "Location search is
+   *      unavailable".
    *
-   * The web part property pane overrides this per site. Rotating the key is a
-   * change to this one line.
+   * The web part property pane overrides both values per site. Rotating the
+   * key is a change to this one line.
    */
-  tomtom: {
+  googleMaps: {
     apiKey: string;
+    /**
+     * Cloud Map ID. Optional but recommended: it enables Advanced Markers and
+     * cloud-based styling. Without one the code falls back to the classic
+     * marker, which looks identical here but is the deprecated API.
+     */
+    mapId: string;
   };
 
 }
@@ -156,8 +169,10 @@ export const APP_CONFIG: IAppConfig = {
     reports: '/SitePages/Report.aspx',
   },
 
-  tomtom: {
-    apiKey: 'ofXMyezRK70KYWilHswlPgWrZHwdLcsC',
+  googleMaps: {
+    // Set this, or set the key per site in the web part property pane.
+    apiKey: '',
+    mapId: '',
   },
 
 };
