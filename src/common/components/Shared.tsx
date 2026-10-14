@@ -8,6 +8,7 @@
 
 import * as React from 'react';
 import { SemanticState } from '../models';
+import { Icon, IconName } from './Icons';
 import { PortalError } from '../services/SPContext';
 import styles from './Shared.module.scss';
 
@@ -137,6 +138,28 @@ export const Panel: React.FC<{
   <div className={[plain ? styles.panelPlain : styles.panel, className ?? ''].join(' ')}>
     {children}
   </div>
+);
+
+/**
+ * The card every screen is built from: a brown header naming it, with room for
+ * a count or a button on the right, over a cream body. The header text is a
+ * real heading, so a screen reader can move between cards.
+ */
+export const HeadedCard: React.FC<{
+  icon: IconName;
+  title: string;
+  actions?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}> = ({ icon, title, actions, className, children }) => (
+  <section className={[styles.headedCard, className ?? ''].join(' ')} aria-label={title}>
+    <header className={styles.headedCardHeader}>
+      <Icon name={icon} size={22} />
+      <h2 className={styles.headedCardTitle}>{title}</h2>
+      {actions ? <div className={styles.headedCardActions}>{actions}</div> : undefined}
+    </header>
+    <div className={styles.headedCardBody}>{children}</div>
+  </section>
 );
 
 export const Card: React.FC<{ children: React.ReactNode }> = ({ children }) => (

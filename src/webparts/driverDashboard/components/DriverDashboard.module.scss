@@ -1,82 +1,177 @@
 @import '../../../common/styles/tokens';
 
+// =============================================================================
+// Driver Dashboard
+// =============================================================================
+// Built from the same parts as Book a Ride: brown-headed cards on the page,
+// white job cards inside them, and full-width actions. On a desktop the open
+// offers and the day's trips sit side by side; on a tablet or phone they stack.
+
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
+
+.board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $gap-lg;
+
+  @media (min-width: 1200px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+// Spans both columns on a desktop.
+.wide {
+  @media (min-width: 1200px) {
+    grid-column: 1 / -1;
+  }
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: $gap-md;
+
+  @media (max-width: $bp-mobile) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+// The number in a card header.
+.countPill {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: $radius-badge;
+  background: $brand-tint;
+  color: $brand-dark;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: $font-heading;
+  font-size: $size-table-cell;
+  font-weight: $weight-heading;
+  box-sizing: border-box;
+}
+
+// -----------------------------------------------------------------------------
+// The offer banner
+// -----------------------------------------------------------------------------
 // The unmissable banner. It carries a COUNT and a WORD, and it is the one
 // place in this interface where something is allowed to shout.
+
 .offerBanner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: $gap-md;
+  gap: 14px;
   flex-wrap: wrap;
-  background: $brand-dark;
-  color: $brand-light;
-  border-radius: $radius-card;
-  padding: $pad-panel-y $pad-panel-x;
+  background: linear-gradient(135deg, $brand-dark 0%, $brand-hover 100%);
+  color: $white;
+  border-radius: 20px;
+  box-shadow: $shadow-container;
+  padding: 16px 20px;
   margin-bottom: $gap-lg;
 
-  @media (max-width: $bp-narrow) {
-    padding: $pad-panel-sm;
+  @media (max-width: $bp-mobile) {
+    padding: 14px;
   }
+}
+
+.offerBannerBell {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border-radius: $radius-badge;
+  background: rgba(255, 255, 255, 0.16);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.offerBannerBody {
+  flex: 1 1 220px;
+  display: flex;
+  align-items: center;
+  gap: $gap-md;
+  min-width: 0;
 }
 
 .offerBannerCount {
   font-family: $font-heading;
-  font-size: 28px;
+  font-size: 34px;
   font-weight: $weight-heading;
-  line-height: 1.1;
+  line-height: 1;
 }
 
 .offerBannerText {
   font-family: $font-body;
-  font-size: $size-table-cell;
+  font-size: 15px;
+  line-height: 1.4;
 }
 
-.offerBannerActions {
-  display: flex;
-  gap: $gap-sm;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-// On the dark banner the secondary button's hover would land on cream, which
-// is correct per the brand rule, so it is used as-is.
 .bannerQuiet {
   font-family: $font-body;
   font-size: $size-hint;
-  color: $brand-light;
+  color: $white;
   opacity: 0.85;
 }
 
-.section { margin-bottom: $gap-lg; }
+// -----------------------------------------------------------------------------
+// "Taken by another driver"
+// -----------------------------------------------------------------------------
+// A plain notice, never a red error: losing the race is the normal case.
 
-.cardGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+.takenNotice {
+  display: flex;
+  align-items: center;
   gap: $gap-md;
+  flex-wrap: wrap;
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  box-shadow: $shadow-card;
+  padding: 12px 16px;
+  margin-bottom: $gap-md;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $brand-dark;
 }
 
+.takenIcon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: $radius-badge;
+  background: $brand-mid;
+  color: $brand-dark;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.takenText { flex: 1 1 220px; }
+
+// -----------------------------------------------------------------------------
+// Job cards - offers, trips, finished trips
+// -----------------------------------------------------------------------------
+
+.jobCard {
+  display: flex;
+  flex-direction: column;
+  gap: $gap-md;
+  min-width: 0;
+  background: $white;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  box-shadow: 0 1px 3px rgba(55, 35, 25, 0.06);
+  padding: 16px;
+}
+
+// An offer is waiting on the driver, so it stands out with a brown edge.
 .offerCard {
-  @include panel;
-  display: flex;
-  flex-direction: column;
-  gap: $gap-sm;
-  border-left: 4px solid $state-attention;
-}
-
-.tripCard {
-  @include panel;
-  display: flex;
-  flex-direction: column;
-  gap: $gap-sm;
-  border-left: 4px solid $state-progress;
-}
-
-.doneCard {
-  @include panel;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  border-left: 4px solid $state-healthy;
+  border-color: rgba($brand-dark, 0.45);
+  box-shadow: $shadow-card;
 }
 
 .cardHead {
@@ -87,62 +182,175 @@
   flex-wrap: wrap;
 }
 
-.route {
-  font-family: $font-body;
-  font-size: $size-section-heading;
-  font-weight: 500;
+// The countdown. A figure, so it is set bold.
+.countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: $radius-badge;
+  background: $brand-tint;
+  font-family: $font-heading;
+  font-size: $size-caption;
+  font-weight: $weight-heading;
   color: $brand-dark;
-  line-height: 1.35;
 }
 
-.routeLeg {
-  display: block;
-  font-size: $size-table-cell;
+.countdownUrgent {
+  background: #FDE3E3;
+  color: $status-red;
+}
+
+// Pickup over destination, joined by a dotted line.
+.route {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: $brand-light;
+  border-radius: $radius-field;
+  padding: 10px 12px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 25px;
+    top: 30px;
+    bottom: 30px;
+    border-left: 2px dotted rgba($brand-dark, 0.35);
+  }
+}
+
+.routeStop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.routeFrom,
+.routeTo {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: $radius-badge;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: $white;
+}
+
+.routeFrom { color: #2F6FE4; box-shadow: inset 0 0 0 1px rgba(47, 111, 228, 0.35); }
+.routeTo   { color: #E5352B; box-shadow: inset 0 0 0 1px rgba(229, 53, 43, 0.35); }
+
+.routeText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-family: $font-heading;
+  font-size: 15px;
+  font-weight: $weight-heading;
+  line-height: 1.3;
+  color: #1F1F1F;
+  overflow-wrap: anywhere;
+}
+
+.routeNotes {
+  font-family: $font-body;
+  font-size: $size-hint;
+  font-weight: $weight-body;
+  line-height: 1.35;
+  color: $brand-dark;
+  margin-top: 2px;
+}
+
+.routeLabel {
+  font-family: $font-body;
+  font-size: 11px;
+  font-weight: $weight-caption;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: $muted;
 }
 
-// The countdown. Figures take the heading face.
-.countdown {
-  font-family: $font-heading;
-  font-weight: $weight-heading;
-  font-size: $size-section-heading;
-  color: $brand-dark;
+.facts {
+  display: flex;
+  flex-direction: column;
 }
 
-.countdownUrgent { color: $status-red; }
+.fact {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 0;
+  font-family: $font-body;
+  font-size: $size-caption;
+  color: $brand-dark;
+
+  &:not(:last-child) { border-bottom: 1px solid $border; }
+}
+
+.factIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: $brand-dark;
+  padding-top: 1px;
+}
+
+.factLabel {
+  flex: 0 0 100px;
+  color: $muted;
+}
+
+.factValue {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.odometer {
+  background: $brand-light;
+  border-radius: $radius-field;
+  padding: 12px 12px 2px;
+}
 
 .cardActions {
   display: flex;
   gap: $gap-sm;
-  margin-top: 4px;
   flex-wrap: wrap;
+  margin-top: auto;
 }
 
-.cardActions > button { flex: 1 1 auto; }
-
-.odometerRow {
-  display: flex;
-  gap: $gap-sm;
-  align-items: flex-end;
-  flex-wrap: wrap;
+.mainAction {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 46px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: $weight-heading;
 }
 
-.odometerField { flex: 1 1 160px; }
+.sideAction {
+  flex: 0 0 auto;
+  padding-left: 22px;
+  padding-right: 22px;
+  min-height: 46px;
+  border-radius: 12px;
+}
 
-.takenNotice {
-  border: 1px solid $border;
-  border-left: 4px solid $status-red;
-  border-radius: $radius-card;
+.cancelAction {
+  flex: 1 1 100%;
+  min-height: 42px;
+  border-radius: 12px;
+  border: 1px solid $status-red;
   background: $white;
-  padding: $pad-panel-sm $pad-panel-x;
-  margin-bottom: $gap-md;
-  font-family: $font-body;
-  font-size: $size-table-cell;
-  color: $brand-dark;
+  font-weight: $weight-heading;
+
+  &:hover:not(:disabled) { background: #FDF1F1; }
 }
 
 .pollNote {
   @include caption;
   display: block;
-  margin-top: $gap-md;
 }

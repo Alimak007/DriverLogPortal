@@ -18,6 +18,7 @@ import {
   Button,
   EmptyState,
   ErrorBanner,
+  HeadedCard,
   LinkButton,
   Loading,
   Notice,
@@ -65,24 +66,6 @@ function InfoRow({ icon, label, action, children }: {
       <span className={styles.infoValue}>{children}</span>
       {action}
     </div>
-  );
-}
-
-/** A card with the brown header the booking screens use. */
-function HeadedCard({ icon, title, className, children }: {
-  icon: IconName;
-  title: string;
-  className?: string;
-  children: React.ReactNode;
-}): JSX.Element {
-  return (
-    <section className={[styles.bookingCard, className ?? ''].join(' ')} aria-label={title}>
-      <header className={styles.bookingCardHeader}>
-        <Icon name={icon} size={22} />
-        <h2 className={styles.bookingCardTitle}>{title}</h2>
-      </header>
-      <div className={styles.bookingCardBody}>{children}</div>
-    </section>
   );
 }
 

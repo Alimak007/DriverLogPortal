@@ -19,22 +19,23 @@
 
 import * as React from 'react';
 import { ConfirmDialog } from '../../../common/components/ConfirmDialog';
+import { Icon, IconName } from '../../../common/components/Icons';
 import {
   Badge,
   Button,
   EmptyState,
   ErrorBanner,
-  FieldRow,
   FormRow,
+  HeadedCard,
   Loading,
   Notice,
   PageShell,
   Reference,
-  SectionHeading,
   TextField,
 } from '../../../common/components/Shared';
 import {
   IOfferCard,
+  ITransportRequest,
   ITripCard,
   REJECTION_REASONS,
   RejectionReason,
@@ -333,6 +334,8 @@ export const DriverDashboard: React.FC<IDriverDashboardProps> = ({
     );
   }
 
+  const count = (n: number): JSX.Element => <span className={styles.countPill}>{n}</span>;
+
   return (
     <PageShell
       heading="Driver dashboard"
@@ -340,9 +343,11 @@ export const DriverDashboard: React.FC<IDriverDashboardProps> = ({
       actions={
         <>
           <Button kind="secondary" onClick={toggleAlert} aria-pressed={alertOn}>
+            <Icon name={alertOn ? 'volume' : 'volumeOff'} size={18} />
             {alertOn ? 'Sound: on' : 'Sound: off'}
           </Button>
           <Button kind="secondary" onClick={() => load().catch(() => undefined)}>
+            <Icon name="refresh" size={18} />
             Refresh now
           </Button>
         </>
@@ -352,42 +357,45 @@ export const DriverDashboard: React.FC<IDriverDashboardProps> = ({
 
       {takenMessage ? (
         <div className={styles.takenNotice} role="alert">
-          <strong>{takenMessage}.</strong> Another driver accepted that trip
-          first. Nothing has been assigned to you.
-          <div style={{ marginTop: 8 }}>
-            <Button kind="action" onClick={() => setTakenMessage(undefined)}>
-              Dismiss
-            </Button>
+          <span className={styles.takenIcon} aria-hidden="true">
+            <Icon name="x" size={18} />
+          </span>
+          <div className={styles.takenText}>
+            <strong>{takenMessage}.</strong> Another driver accepted that trip
+            first. Nothing has been assigned to you.
           </div>
+          <Button kind="action" onClick={() => setTakenMessage(undefined)}>
+            Dismiss
+          </Button>
         </div>
       ) : undefined}
 
       {/* Mechanism 1: the unmissable banner. */}
       {offers.length > 0 ? (
         <div className={styles.offerBanner} role="status" aria-live="assertive">
-          <div>
+          <span className={styles.offerBannerBell} aria-hidden="true">
+            <Icon name="bell" size={26} />
+          </span>
+          <div className={styles.offerBannerBody}>
             <div className={styles.offerBannerCount}>{offers.length}</div>
             <div className={styles.offerBannerText}>
               open ride offer{offers.length === 1 ? '' : 's'} waiting for you.
               First to accept gets the trip.
             </div>
           </div>
-          <div className={styles.offerBannerActions}>
-            {!alertOn ? (
-              <span className={styles.bannerQuiet}>
-                Turn sound on to be alerted next time.
-              </span>
-            ) : undefined}
-          </div>
+          {!alertOn ? (
+            <span className={styles.bannerQuiet}>
+              Turn sound on to be alerted next time.
+            </span>
+          ) : undefined}
         </div>
       ) : undefined}
 
       {loading ? (
         <Loading what="Loading your offers and trips" />
       ) : (
-        <>
-          <section className={styles.section}>
-            <SectionHeading>Open offers</SectionHeading>
+        <div className={styles.board}>
+          <HeadedCard icon="bell" title="Open offers" actions={count(offers.length)}>
             {offers.length === 0 ? (
               <EmptyState title="No open offers">
                 You will see new offers here within {Math.round(pollMs / 1000)}{' '}
@@ -409,10 +417,9 @@ export const DriverDashboard: React.FC<IDriverDashboardProps> = ({
                 ))}
               </div>
             )}
-          </section>
+          </HeadedCard>
 
-          <section className={styles.section}>
-            <SectionHeading>My trips today</SectionHeading>
+          <HeadedCard icon="car" title="My trips today" actions={count(trips.length)}>
             {trips.length === 0 ? (
               <EmptyState title="No trips assigned to you right now" />
             ) : (
@@ -434,45 +441,48 @@ export const DriverDashboard: React.FC<IDriverDashboardProps> = ({
                 ))}
               </div>
             )}
-          </section>
+          </HeadedCard>
 
-          <section className={styles.section}>
-            <SectionHeading>Completed today</SectionHeading>
+          <HeadedCard
+            icon="check"
+            title="Completed today"
+            actions={count(completed.length)}
+            className={styles.wide}
+          >
             {completed.length === 0 ? (
               <EmptyState title="Nothing finished yet today" />
             ) : (
               <div className={styles.cardGrid}>
                 {completed.map((card) => (
-                  <div className={styles.doneCard} key={card.trip.id}>
+                  <article className={styles.jobCard} key={card.trip.id}>
                     <div className={styles.cardHead}>
                       <Reference>{card.request.requestId}</Reference>
                       <Badge state="healthy" label="Completed" />
                     </div>
-                    <div className={styles.route}>
-                      {card.request.dropOffText}
-                      <span className={styles.routeLeg}>from {card.request.pickupText}</span>
+                    <Route request={card.request} />
+                    <div className={styles.facts}>
+                      <Fact icon="flag" label="Finished">
+                        {formatTime(card.trip.actualDropTime)}
+                      </Fact>
+                      {card.trip.openingReading !== undefined &&
+                      card.trip.closingReading !== undefined ? (
+                        <Fact icon="navigation" label="Distance">
+                          {card.trip.closingReading - card.trip.openingReading} km
+                        </Fact>
+                      ) : undefined}
                     </div>
-                    <FieldRow label="Finished">
-                      {formatTime(card.trip.actualDropTime)}
-                    </FieldRow>
-                    {card.trip.openingReading !== undefined &&
-                    card.trip.closingReading !== undefined ? (
-                      <FieldRow label="Distance">
-                        {card.trip.closingReading - card.trip.openingReading} km
-                      </FieldRow>
-                    ) : undefined}
-                  </div>
+                  </article>
                 ))}
               </div>
             )}
-          </section>
+          </HeadedCard>
 
-          <span className={styles.pollNote}>
+          <span className={[styles.pollNote, styles.wide].join(' ')}>
             This page checks for new offers every {Math.round(pollMs / 1000)}{' '}
             seconds. If you miss an offer, the request goes to the
             Transportation Coordinator &mdash; it is never lost.
           </span>
-        </>
+        </div>
       )}
 
       <ConfirmDialog
@@ -522,6 +532,55 @@ export const DriverDashboard: React.FC<IDriverDashboardProps> = ({
 };
 
 // -----------------------------------------------------------------------------
+// Card parts
+// -----------------------------------------------------------------------------
+
+/**
+ * Pickup over destination, joined by a dotted line, each with the requester's
+ * note beneath it. The note is what tells a driver WHICH gate or entrance - a
+ * map address alone does not.
+ */
+function Route({ request }: { request: ITransportRequest }): JSX.Element {
+  const stops: { label: string; text: string; notes?: string; to: boolean }[] = [
+    { label: 'From', text: request.pickupText, notes: request.pickupNotes, to: false },
+    { label: 'To', text: request.dropOffText, notes: request.dropOffNotes, to: true },
+  ];
+  return (
+    <div className={styles.route}>
+      {stops.map((stop) => (
+        <div className={styles.routeStop} key={stop.label}>
+          <span className={stop.to ? styles.routeTo : styles.routeFrom} aria-hidden="true">
+            <Icon name={stop.to ? 'pin' : 'target'} size={16} />
+          </span>
+          <span className={styles.routeText}>
+            <span className={styles.routeLabel}>{stop.label}</span>
+            {stop.text || '—'}
+            {stop.notes ? <span className={styles.routeNotes}>{stop.notes}</span> : undefined}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** One fact on a card: an icon, a label, and the value. */
+function Fact({ icon, label, children }: {
+  icon: IconName;
+  label: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div className={styles.fact}>
+      <span className={styles.factIcon} aria-hidden="true">
+        <Icon name={icon} size={16} />
+      </span>
+      <span className={styles.factLabel}>{label}</span>
+      <span className={styles.factValue}>{children}</span>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
 // Offer card
 // -----------------------------------------------------------------------------
 
@@ -537,43 +596,61 @@ function OfferCardView({ card, busy, onAccept, onReject }: {
   const urgent = seconds <= 60;
 
   return (
-    <div className={styles.offerCard}>
+    <article className={[styles.jobCard, styles.offerCard].join(' ')}>
       <div className={styles.cardHead}>
         <Reference>{card.request.requestId}</Reference>
         <span
           className={[styles.countdown, urgent ? styles.countdownUrgent : ''].join(' ')}
         >
+          <Icon name="clock" size={15} />
           {formatCountdown(seconds)} left
         </span>
       </div>
 
-      <div className={styles.route}>
-        {card.request.dropOffText}
-        <span className={styles.routeLeg}>from {card.request.pickupText}</span>
-      </div>
+      <Route request={card.request} />
 
-      <FieldRow label="When">{formatDateTime(card.request.requiredDateTime)}</FieldRow>
-      <FieldRow label="Type">{card.request.requestType}</FieldRow>
-      <FieldRow label="Vehicle">{card.vehicleTypeName}</FieldRow>
-      {card.request.requestType === 'Items or Documents' ? (
-        <FieldRow label="Items">{card.request.itemDescription ?? '—'}</FieldRow>
-      ) : (
-        <FieldRow label="Passengers">{card.request.noOfPax ?? '—'}</FieldRow>
-      )}
-      <FieldRow label="Requested by">{card.requesterName}</FieldRow>
+      <div className={styles.facts}>
+        <Fact icon="calendar" label="When">
+          {formatDateTime(card.request.requiredDateTime)}
+        </Fact>
+        <Fact icon="doc" label="Type">
+          {card.request.requestType}
+        </Fact>
+        <Fact icon="car" label="Vehicle">
+          {card.vehicleTypeName}
+        </Fact>
+        {card.request.requestType === 'Items or Documents' ? (
+          <Fact icon="box" label="Items">
+            {card.request.itemDescription ?? '—'}
+          </Fact>
+        ) : (
+          <Fact icon="users" label="Passengers">
+            {card.request.noOfPax ?? '—'}
+          </Fact>
+        )}
+        <Fact icon="user" label="Requested by">
+          {card.requesterName}
+        </Fact>
+      </div>
 
       {/* The card deliberately omits the requester's phone number until the
           driver accepts. */}
 
       <div className={styles.cardActions}>
-        <Button kind="primary" onClick={onAccept} disabled={busy || seconds === 0}>
+        <Button
+          kind="primary"
+          className={styles.mainAction}
+          onClick={onAccept}
+          disabled={busy || seconds === 0}
+        >
           {busy ? 'Accepting…' : 'Accept'}
+          {busy ? undefined : <Icon name="check" size={18} />}
         </Button>
-        <Button kind="secondary" onClick={onReject} disabled={busy}>
+        <Button kind="secondary" className={styles.sideAction} onClick={onReject} disabled={busy}>
           Reject
         </Button>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -593,53 +670,47 @@ function TripCardView({ card, busy, odometer, onOdometer, onAdvance, onCancel }:
   const prompt = next ? odometerPromptFor(next) : undefined;
 
   return (
-    <div className={styles.tripCard}>
+    <article className={styles.jobCard}>
       <div className={styles.cardHead}>
         <Reference>{card.request.requestId}</Reference>
         <Badge state={tripState(card.trip.tripStatus)} label={card.trip.tripStatus} />
       </div>
 
-      <div className={styles.route}>
-        {card.request.dropOffText}
-        <span className={styles.routeLeg}>from {card.request.pickupText}</span>
-      </div>
+      <Route request={card.request} />
 
-      <FieldRow label="When">{formatDateTime(card.request.requiredDateTime)}</FieldRow>
-      <FieldRow label="Vehicle">{card.vehiclePlate || '—'}</FieldRow>
-      <FieldRow label="Passenger">{card.requesterName}</FieldRow>
-      {card.request.requestType !== 'Items or Documents' ? (
-        <FieldRow label="Passengers">{card.request.noOfPax ?? '—'}</FieldRow>
-      ) : undefined}
+      <div className={styles.facts}>
+        <Fact icon="calendar" label="When">
+          {formatDateTime(card.request.requiredDateTime)}
+        </Fact>
+        <Fact icon="car" label="Vehicle">
+          {card.vehiclePlate || '—'}
+        </Fact>
+        <Fact icon="user" label="Passenger">
+          {card.requesterName}
+        </Fact>
+        {card.request.requestType !== 'Items or Documents' ? (
+          <Fact icon="users" label="Passengers">
+            {card.request.noOfPax ?? '—'}
+          </Fact>
+        ) : undefined}
+      </div>
 
       {prompt ? (
-        <div className={styles.odometerRow}>
-          <div className={styles.odometerField}>
-            <FormRow
-              label={`${prompt === 'opening' ? 'Opening' : 'Closing'} odometer reading`}
-              required
-              hint="Goes straight into the trip sheet, so you do not re-key it later."
-            >
-              <TextField
-                type="number"
-                inputMode="numeric"
-                value={odometer}
-                onChange={(e) => onOdometer(e.target.value)}
-              />
-            </FormRow>
-          </div>
+        <div className={styles.odometer}>
+          <FormRow
+            label={`${prompt === 'opening' ? 'Opening' : 'Closing'} odometer reading`}
+            required
+            hint="Goes straight into the trip sheet, so you do not re-key it later."
+          >
+            <TextField
+              type="number"
+              inputMode="numeric"
+              value={odometer}
+              onChange={(e) => onOdometer(e.target.value)}
+            />
+          </FormRow>
         </div>
       ) : undefined}
-
-      <div className={styles.cardActions}>
-        {next ? (
-          <Button kind="primary" onClick={() => onAdvance(next)} disabled={busy}>
-            {busy ? 'Saving…' : (TAP_LABEL[next] ?? next)}
-          </Button>
-        ) : undefined}
-        <Button kind="destructive" onClick={onCancel} disabled={busy}>
-          Cancel trip
-        </Button>
-      </div>
 
       {card.trip.tripStatus === 'Assigned' ? (
         <Notice>
@@ -647,7 +718,29 @@ function TripCardView({ card, busy, odometer, onOdometer, onAdvance, onCancel }:
           <strong>On my way</strong> when you set off.
         </Notice>
       ) : undefined}
-    </div>
+
+      <div className={styles.cardActions}>
+        {next ? (
+          <Button
+            kind="primary"
+            className={styles.mainAction}
+            onClick={() => onAdvance(next)}
+            disabled={busy}
+          >
+            {busy ? 'Saving…' : (TAP_LABEL[next] ?? next)}
+            {busy ? undefined : <Icon name="arrowRight" size={18} />}
+          </Button>
+        ) : undefined}
+        <Button
+          kind="destructive"
+          className={styles.cancelAction}
+          onClick={onCancel}
+          disabled={busy}
+        >
+          Cancel trip
+        </Button>
+      </div>
+    </article>
   );
 }
 

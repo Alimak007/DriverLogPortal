@@ -1,6 +1,7 @@
 import { IPropertyPaneGroup, PropertyPaneSlider } from '@microsoft/sp-property-pane';
 import * as React from 'react';
 import * as ReactDom from 'react-dom';
+import { APP_CONFIG } from '../../common/config/AppConfig';
 import {
   FleetWebPartBase,
   IFleetWebPartProps,
@@ -22,6 +23,7 @@ export default class DispatchDashboardWebPart extends FleetWebPartBase<IDispatch
         user: this.currentUser,
         bootstrapError: this.bootstrapError,
         refreshMs: (this.properties.refreshSeconds ?? 60) * 1000,
+        reportsUrl: `${this.context.pageContext.web.absoluteUrl}${APP_CONFIG.pages.reports}`,
       },
     );
 

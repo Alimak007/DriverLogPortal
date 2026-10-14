@@ -102,6 +102,8 @@ export interface IAppConfig {
   pages: {
     bookARide: string;
     myBookings: string;
+    /** Linked from the Coordinator's side menu. */
+    reports: string;
   };
 
   /**
@@ -151,6 +153,7 @@ export const APP_CONFIG: IAppConfig = {
   pages: {
     bookARide: '/SitePages/Home.aspx',
     myBookings: '/SitePages/MyBookings.aspx',
+    reports: '/SitePages/Report.aspx',
   },
 
   tomtom: {

@@ -13,15 +13,16 @@
 
 import * as React from 'react';
 import { DataGrid, IColumn } from '../../../common/components/DataGrid';
+import { Icon, IconName } from '../../../common/components/Icons';
 import {
   Button,
   EmptyState,
   ErrorBanner,
   FormRow,
+  HeadedCard,
   Loading,
   Notice,
   PageShell,
-  SectionHeading,
   Select,
   TextField,
 } from '../../../common/components/Shared';
@@ -44,6 +45,18 @@ export interface IReportsProps {
   user?: ICurrentUser;
   bootstrapError?: unknown;
 }
+
+/** The drawing on each report's tile. Decoration only. */
+const REPORT_ICON: Record<string, IconName> = {
+  TripSummary: 'doc',
+  VehicleUtilisation: 'car',
+  DriverUtilisation: 'user',
+  RequestFulfilment: 'check',
+  BroadcastEffectiveness: 'chart',
+  DriverResponseBehaviour: 'users',
+  RejectionCancellationAnalysis: 'x',
+  DemandByTimeAndRoute: 'clock',
+};
 
 function toDateInput(d: Date): string {
   const two = (n: number): string => (n < 10 ? `0${n}` : String(n));
@@ -155,6 +168,19 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
     );
   }
 
+  const exports = result ? (
+    <>
+      <Button kind="secondary" onClick={() => exportExcel(result)}>
+        <Icon name="download" size={16} />
+        Excel
+      </Button>
+      <Button kind="secondary" onClick={() => exportCsv(result)}>
+        <Icon name="download" size={16} />
+        CSV
+      </Button>
+    </>
+  ) : undefined;
+
   return (
     <PageShell
       heading="Fleet reports"
@@ -162,111 +188,128 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
     >
       <ErrorBanner error={error} onDismiss={() => setError(undefined)} />
 
-      <div className={styles.filterBar}>
-        <FormRow label="From" required htmlFor="report-from">
-          <TextField
-            id="report-from"
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
-        </FormRow>
+      <div className={styles.layout}>
+        <HeadedCard icon="calendar" title="Filters" className={styles.filtersCard}>
+          <div className={styles.filterGrid}>
+            <FormRow label="From" required htmlFor="report-from">
+              <TextField
+                id="report-from"
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+            </FormRow>
 
-        <FormRow
-          label="To"
-          required
-          htmlFor="report-to"
-          error={rangeTooLong ? 'The range cannot be longer than 12 months.' : undefined}
-        >
-          <TextField
-            id="report-to"
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
-        </FormRow>
+            <FormRow
+              label="To"
+              required
+              htmlFor="report-to"
+              error={rangeTooLong ? 'The range cannot be longer than 12 months.' : undefined}
+            >
+              <TextField
+                id="report-to"
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </FormRow>
 
-        <FormRow label="Property" htmlFor="report-property">
-          <Select
-            id="report-property"
-            value={propertyId}
-            onChange={(e) => setPropertyId(e.target.value)}
-          >
-            <option value="">All properties</option>
-            {properties.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
-          </Select>
-        </FormRow>
+            <FormRow label="Property" htmlFor="report-property">
+              <Select
+                id="report-property"
+                value={propertyId}
+                onChange={(e) => setPropertyId(e.target.value)}
+              >
+                <option value="">All properties</option>
+                {properties.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
+                ))}
+              </Select>
+            </FormRow>
 
-        <FormRow label="Request type" htmlFor="report-request-type">
-          <Select
-            id="report-request-type"
-            value={requestType}
-            onChange={(e) => setRequestType(e.target.value)}
-          >
-            <option value="">All request types</option>
-            {REQUEST_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </Select>
-        </FormRow>
+            <FormRow label="Request type" htmlFor="report-request-type">
+              <Select
+                id="report-request-type"
+                value={requestType}
+                onChange={(e) => setRequestType(e.target.value)}
+              >
+                <option value="">All request types</option>
+                {REQUEST_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </Select>
+            </FormRow>
 
-        <FormRow label="Vehicle type" htmlFor="report-vehicle-type">
-          <Select
-            id="report-vehicle-type"
-            value={vehicleTypeId}
-            onChange={(e) => setVehicleTypeId(e.target.value)}
-          >
-            <option value="">All vehicle types</option>
-            {vehicleTypes.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title}
-              </option>
-            ))}
-          </Select>
-        </FormRow>
+            <FormRow label="Vehicle type" htmlFor="report-vehicle-type">
+              <Select
+                id="report-vehicle-type"
+                value={vehicleTypeId}
+                onChange={(e) => setVehicleTypeId(e.target.value)}
+              >
+                <option value="">All vehicle types</option>
+                {vehicleTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </Select>
+            </FormRow>
+          </div>
 
-        <div className={styles.filterActions}>
           <Button
             kind="primary"
+            className={styles.runButton}
             disabled={running || rangeTooLong}
             onClick={() => {
               run(reportKey).catch(() => undefined);
             }}
           >
             {running ? 'Running…' : 'Run report'}
+            {running ? undefined : <Icon name="arrowRight" size={18} />}
           </Button>
-        </div>
-      </div>
+        </HeadedCard>
 
-      <SectionHeading>Reports</SectionHeading>
-      <div className={styles.reportList} role="group" aria-label="Available reports">
-        {available.map((r) => (
-          <button
-            key={r.key}
-            type="button"
-            className={[
-              styles.reportButton,
-              reportKey === r.key ? styles.reportButtonActive : '',
-            ].join(' ')}
-            aria-pressed={reportKey === r.key}
-            onClick={() => {
-              run(r.key).catch(() => undefined);
-            }}
-          >
-            {r.title}
-            {r.restricted ? (
-              <span className={styles.restrictedMark}>
-                Restricted &middot; shows individual acceptance rates
-              </span>
-            ) : undefined}
-          </button>
-        ))}
+        <HeadedCard icon="chart" title="Reports" className={styles.reportsCard}>
+          <div className={styles.reportList} role="group" aria-label="Available reports">
+            {available.map((r) => {
+              const active = reportKey === r.key;
+              return (
+                <button
+                  key={r.key}
+                  type="button"
+                  className={[styles.reportTile, active ? styles.reportTileActive : ''].join(' ')}
+                  aria-pressed={active}
+                  onClick={() => {
+                    run(r.key).catch(() => undefined);
+                  }}
+                >
+                  <span className={styles.reportIcon} aria-hidden="true">
+                    <Icon name={REPORT_ICON[r.key] ?? 'chart'} size={22} />
+                  </span>
+                  <span className={styles.reportText}>
+                    <span className={styles.reportTitle}>{r.title}</span>
+                    {r.restricted ? (
+                      <span className={styles.restrictedMark}>
+                        <Icon name="lock" size={12} />
+                        Restricted &middot; shows individual acceptance rates
+                      </span>
+                    ) : undefined}
+                  </span>
+                  {active ? (
+                    <span className={styles.checkMark}>
+                      <Icon name="check" size={13} />
+                      <span className={styles.srOnly}>Selected</span>
+                    </span>
+                  ) : undefined}
+                </button>
+              );
+            })}
+          </div>
+        </HeadedCard>
       </div>
 
       {reportKey === 'DriverResponseBehaviour' ? (
@@ -286,41 +329,44 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
         </Notice>
       ) : undefined}
 
-      {running ? (
-        <Loading what="Running the report" />
-      ) : !result ? (
-        <EmptyState title="No report has been run yet">
-          Set a period above and choose a report.
-        </EmptyState>
-      ) : (
-        <>
-          <div className={styles.resultHead}>
-            <SectionHeading>{result.title}</SectionHeading>
-            <div className={styles.filterActions}>
-              <span className={styles.generated}>
+      <HeadedCard
+        icon="doc"
+        title={result && !running ? result.title : 'Results'}
+        actions={running ? undefined : exports}
+      >
+        {running ? (
+          <Loading what="Running the report" />
+        ) : !result ? (
+          <EmptyState title="No report has been run yet">
+            Set a period above and choose a report.
+          </EmptyState>
+        ) : (
+          <>
+            <div className={styles.resultMeta}>
+              <span className={styles.metaPill}>
+                <Icon name="hash" size={14} />
                 {result.rows.length} row{result.rows.length === 1 ? '' : 's'}
-                {' · '}generated {formatDateTime(result.generatedAt)}
-                {result.fromSnapshot ? ' · from nightly snapshot' : ' · live data'}
               </span>
-              <Button kind="secondary" onClick={() => exportExcel(result)}>
-                Export to Excel
-              </Button>
-              <Button kind="secondary" onClick={() => exportCsv(result)}>
-                Export to CSV
-              </Button>
+              <span className={styles.metaPill}>
+                <Icon name="clock" size={14} />
+                generated {formatDateTime(result.generatedAt)}
+              </span>
+              <span className={styles.metaPill}>
+                {result.fromSnapshot ? 'from nightly snapshot' : 'live data'}
+              </span>
             </div>
-          </div>
 
-          <DataGrid
-            caption={`${result.title}, ${from} to ${to}`}
-            captionVisuallyHidden
-            columns={columns}
-            rows={result.rows}
-            rowKey={(row) => JSON.stringify(row).slice(0, 120)}
-            emptyMessage="No data for that period and those filters."
-          />
-        </>
-      )}
+            <DataGrid
+              caption={`${result.title}, ${from} to ${to}`}
+              captionVisuallyHidden
+              columns={columns}
+              rows={result.rows}
+              rowKey={(row) => JSON.stringify(row).slice(0, 120)}
+              emptyMessage="No data for that period and those filters."
+            />
+          </>
+        )}
+      </HeadedCard>
     </PageShell>
   );
 };

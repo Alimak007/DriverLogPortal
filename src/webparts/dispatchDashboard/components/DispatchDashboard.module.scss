@@ -1,162 +1,1123 @@
 @import '../../../common/styles/tokens';
 
-.section { margin-bottom: $gap-lg; }
+// =============================================================================
+// Dispatch Dashboard - "Coordinator – Fleet Management Dashboard"
+// =============================================================================
+// Built to the client's reference: a brown title tab, a cream frame with a
+// brown outline holding the side menu and the dashboard, tinted counter cards,
+// light compact tables, the availability panel down the right, and the
+// allocation as six connected step cards along the bottom.
+//
+//   1440px and up   the reference layout: counters and the two tables on the
+//                   left, availability down the right
+//   1100 - 1439     counters, the two tables side by side, availability below
+//   below 1100      everything stacks; below 1024 the side menu becomes a row
+//                   of chips
 
-// Counters are filter shortcuts, so they wrap onto as many rows as they need
-// rather than scrolling sideways.
-.counterRow {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: $gap-md;
+$ink: #1F1F1F;
+$soft: #6B6B6B;
+$line: #ECE7E1;
+$frame-edge: rgba($brand-dark, 0.6);
+
+.page {
+  font-family: $font-body;
+  color: $ink;
+  box-sizing: border-box;
+
+  * { box-sizing: border-box; }
 }
 
-.sectionHead {
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.muted { color: $soft; }
+.nowrap { white-space: nowrap; }
+
+.subLine {
+  display: block;
+  font-size: 11px;
+  font-weight: $weight-body;
+  line-height: 1.35;
+  color: $soft;
+}
+
+.ref {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+// A long map address on one line, cut with an ellipsis.
+.clip {
+  display: block;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// -----------------------------------------------------------------------------
+// Title tab and the controls beside it
+// -----------------------------------------------------------------------------
+
+.titleRow {
   display: flex;
-  align-items: baseline;
+  align-items: flex-end;
   justify-content: space-between;
   gap: $gap-md;
   flex-wrap: wrap;
-  margin-bottom: $gap-md;
 }
 
-.periodRow {
+.titleBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 100%;
+  background: linear-gradient(180deg, #7A3A1C 0%, $brand-dark 100%);
+  color: $white;
+  border-radius: 22px 22px 0 0;
+  padding: 12px 34px 12px 20px;
+  box-shadow: 0 -2px 10px rgba(101, 45, 22, 0.25);
+}
+
+.titleIcon { display: inline-flex; flex: 0 0 auto; }
+
+.title {
+  margin: 0;
+  font-family: $font-heading;
+  font-size: 22px;
+  font-weight: $weight-heading;
+  color: $white;
+  letter-spacing: 0.2px;
+
+  @media (max-width: $bp-narrow) {
+    font-size: 17px;
+  }
+}
+
+.toolbar {
   display: flex;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+
+  select {
+    width: auto;
+    min-width: 140px;
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: $size-caption;
+  }
+
+  button { min-height: 34px; padding: 6px 10px; }
+}
+
+.refreshed {
+  font-size: 11px;
+  color: $soft;
+}
+
+// -----------------------------------------------------------------------------
+// Frame: side menu and the dashboard
+// -----------------------------------------------------------------------------
+
+.frame {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  background: #FBF6F0;
+  border: 2px solid $frame-edge;
+  border-radius: 0 20px 20px 20px;
+  box-shadow: 0 10px 28px rgba(101, 45, 22, 0.14);
+  overflow: hidden;
+
+  @media (max-width: 1023px) {
+    grid-template-columns: minmax(0, 1fr);
+    border-radius: 0 0 20px 20px;
+  }
+}
+
+.sidebar {
+  background: #F7F1EA;
+  border-right: 1px solid $line;
+  padding: 14px 10px;
+
+  @media (max-width: 1023px) {
+    border-right: none;
+    border-bottom: 1px solid $line;
+    padding: 10px;
+  }
+}
+
+.sidebarTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 14px;
+  font-family: $font-heading;
+  font-size: 14px;
+  font-weight: $weight-heading;
+  color: $ink;
+
+  @media (max-width: 1023px) {
+    display: none;
+  }
+}
+
+.menuList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  @media (max-width: 1023px) {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 6px;
+  }
+}
+
+.navItem {
+  @include focus-ring;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-family: $font-body;
+  font-size: 13px;
+  font-weight: $weight-caption;
+  color: $ink;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color $transition, color $transition;
+
+  &:hover { background: $brand-tint; }
+
+  @media (max-width: 1023px) {
+    width: auto;
+    padding: 7px 12px;
+    border: 1px solid $line;
+    background: $white;
+  }
+}
+
+.navItemActive {
+  background: linear-gradient(180deg, #7A3A1C 0%, $brand-dark 100%);
+  color: $white;
+  box-shadow: $shadow-button;
+
+  &:hover { background: $brand-dark; }
+
+  @media (max-width: 1023px) {
+    background: $brand-dark;
+    border-color: $brand-dark;
+  }
+}
+
+.main {
+  min-width: 0;
+  padding: 12px;
+}
+
+.escalation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #FFF4DC;
+  border-left: 4px solid $status-amber;
+  font-size: $size-caption;
+  color: #5A3D00;
+}
+
+// -----------------------------------------------------------------------------
+// Dashboard grid
+// -----------------------------------------------------------------------------
+
+.grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'counters'
+    'ongoing'
+    'pending'
+    'avail';
+
+  @media (min-width: 1100px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      'counters counters'
+      'ongoing pending'
+      'avail avail';
+    align-items: start;
+  }
+
+  @media (min-width: 1440px) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(280px, 0.6fr);
+    grid-template-areas:
+      'counters counters avail'
+      'ongoing pending avail';
+  }
+}
+
+.counters { grid-area: counters; }
+.ongoing  { grid-area: ongoing; }
+.pending  { grid-area: pending; }
+
+.availability {
+  grid-area: avail;
+
+  @media (min-width: 1440px) {
+    align-self: stretch;
+  }
+}
+
+// "View All" on a trip table: it takes both left-hand columns.
+.wideLeft {
+  grid-column: 1 / -1;
+
+  @media (min-width: 1100px) {
+    grid-column: 1 / 3;
+  }
+}
+
+// "View All" on availability: it takes the full width under the counters.
+.wideAll {
+  @media (min-width: 1440px) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Counter cards
+// -----------------------------------------------------------------------------
+
+.counters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+
+  @media (min-width: 600px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @media (min-width: 1100px) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.stat {
+  @include focus-ring;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 64px;
+  min-width: 0;
+  padding: 8px 6px 8px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(55, 35, 25, 0.08);
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow $transition, border-color $transition;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(55, 35, 25, 0.14);
+  }
+}
+
+// A pressed counter is filtering the grids: a brown edge says so.
+.statActive {
+  border-color: $brand-dark;
+  box-shadow: inset 0 0 0 1px $brand-dark, 0 4px 12px rgba(55, 35, 25, 0.14);
+}
+
+.statIcon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+
+  @media (min-width: 1100px) and (max-width: 1599px) {
+    width: 38px;
+    height: 38px;
+  }
+
+  border-radius: $radius-badge;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Each counter: a tinted card, and its icon in a deeper tint of the same hue.
+.toneBlue   { background: linear-gradient(135deg, #F5F9FE 0%, #E2EDFB 100%); .statIcon { background: #D3E4FA; color: #2F6FD8; } }
+.toneOrange { background: linear-gradient(135deg, #FFF8F1 0%, #FDE9D7 100%); .statIcon { background: #FCDDC2; color: #E07A26; } }
+.toneGreen  { background: linear-gradient(135deg, #F3FBF6 0%, #DFF3E7 100%); .statIcon { background: #22A45A; color: $white; box-shadow: 0 0 0 4px #CDEBD9; } }
+.tonePurple { background: linear-gradient(135deg, #F8F5FE 0%, #EAE3FA 100%); .statIcon { background: #E0D5F8; color: #6E42C9; } }
+.toneTeal   { background: linear-gradient(135deg, #F1FBFA 0%, #D9F2F0 100%); .statIcon { background: #CBEFEC; color: #169C97; } }
+.toneGrey   { background: linear-gradient(135deg, #F4F6F9 0%, #E2E8EF 100%); .statIcon { background: #D6DDE6; color: #3B4552; } }
+
+.statText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.statValue {
+  font-family: $font-heading;
+  font-size: 20px;
+  font-weight: $weight-heading;
+  line-height: 1.1;
+  color: $ink;
+}
+
+.statLabel {
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: #333;
+}
+
+.statChevron {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: $ink;
+
+  // The arrow needs room; on a narrow card the words matter more.
+  @media (min-width: 1100px) and (max-width: 1599px) {
+    display: none;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// White boxes and the compact tables inside them
+// -----------------------------------------------------------------------------
+
+.box {
+  min-width: 0;
+  background: $white;
+  border: 1px solid $line;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(55, 35, 25, 0.06);
+  padding: 10px 10px 8px;
+}
+
+.boxHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: $gap-sm;
   flex-wrap: wrap;
-  margin-bottom: $gap-md;
+  margin: 0 2px 8px;
 }
 
-.periodLabel {
-  @include caption;
+.boxTitle {
+  margin: 0;
+  font-family: $font-heading;
+  font-size: 15px;
+  font-weight: $weight-heading;
+  color: $ink;
 }
 
-// Availability panel - two tabs. The active tab is the brand dark, as the
-// brand guideline specifies.
-.tabs {
-  display: flex;
+.viewAll {
+  @include focus-ring;
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
-  border-bottom: 1px solid $border;
-  margin-bottom: $gap-md;
+  border: none;
+  background: none;
+  padding: 3px 4px;
+  border-radius: 6px;
+  font-family: $font-heading;
+  font-size: 12px;
+  font-weight: $weight-heading;
+  color: #1E5BB8;
+  cursor: pointer;
+
+  &:hover { background: #EEF3FC; }
+}
+
+// The grids inside a box: no frame of their own, a light header row and
+// tight rows, as the reference draws them.
+.box div[role='region'] {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.box table {
+  font-size: 11.5px;
+  color: $ink;
+}
+
+.box table thead th {
+  background: #F5F2EE;
+  color: $ink;
+  font-family: $font-heading;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 7px;
+  border-bottom: 1px solid $line;
+}
+
+.box table tbody td {
+  padding: 6px 7px;
+  border-top: 1px solid $line;
+}
+
+.box table tbody tr:nth-child(odd),
+.box table tbody tr:nth-child(even) {
+  background: $white;
+}
+
+.box table tbody tr:hover { background: #FCF8F4; }
+
+// -----------------------------------------------------------------------------
+// Pills, avatars, the row menu
+// -----------------------------------------------------------------------------
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  line-height: 1.45;
+}
+
+.pillDot {
+  width: 6px;
+  height: 6px;
+  border-radius: $radius-badge;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.pillHealthy   { background: #DAF2E4; color: #13693A; }
+.pillAttention { background: #FCE3A6; color: #6B4600; }
+.pillProgress  { background: #DCEAFB; color: #1B4F9C; }
+.pillException { background: #FDE0E0; color: #A61B1B; }
+.pillNeutral   { background: #ECECEC; color: #4A4A4A; }
+
+// In Transit and Completed are solid, as in the design.
+.pillSolid.pillProgress { background: #2F6FD8; color: $white; }
+.pillSolid.pillHealthy  { background: #22A45A; color: $white; }
+.pillSolid .pillDot { display: none; }
+
+.person {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.personName {
+  min-width: 0;
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.avatar {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: $radius-badge;
+  background: linear-gradient(135deg, #F7D9BF 0%, #E9B88F 100%);
+  color: $brand-dark;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: $font-heading;
+  font-size: 11px;
+  font-weight: $weight-heading;
+}
+
+.avatarLarge {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+}
+
+.vehicleIcon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #EEF0F2;
+  color: #52616F;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dotsButton {
+  @include focus-ring;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: $ink;
+  cursor: pointer;
+
+  &:hover { background: #F2ECE6; }
+}
+
+// Fixed to the window, so the grid's scroll box cannot clip it.
+.menu {
+  position: fixed;
+  z-index: 1000;
+  width: 200px;
+  background: $white;
+  border: 1px solid $line;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(55, 35, 25, 0.18);
+  padding: 6px;
+}
+
+.menuItem {
+  @include focus-ring;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-family: $font-body;
+  font-size: $size-caption;
+  font-weight: $weight-caption;
+  color: $brand-dark;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover { background: $brand-tint; }
+}
+
+.menuItemDanger { color: $status-red; }
+
+// -----------------------------------------------------------------------------
+// Availability tabs
+// -----------------------------------------------------------------------------
+
+.tabs {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 8px;
 }
 
 .tab {
   @include focus-ring;
-  font-family: $font-heading;
-  font-size: $size-button;
-  font-weight: $weight-button;
-  background: none;
   border: none;
-  border-radius: $radius-toolbar $radius-toolbar 0 0;
-  padding: 9px 16px;
+  background: #ECE8E4;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-family: $font-heading;
+  font-size: 13px;
+  font-weight: $weight-heading;
+  color: $ink;
   cursor: pointer;
-  color: $brand-dark;
   transition: background-color $transition, color $transition;
 
-  &:hover { background: $brand-row-alt; }
+  &:hover { background: $brand-tint; }
 }
 
 .tabActive {
-  background: $brand-dark;
-  color: $brand-light;
+  background: linear-gradient(180deg, #7A3A1C 0%, $brand-dark 100%);
+  color: $white;
 
-  &:hover { background: $brand-hover; }
+  &:hover { background: $brand-dark; }
 }
 
-.statusCell {
-  display: flex;
+.staleNote {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: $soft;
+}
+
+// -----------------------------------------------------------------------------
+// Allocation steps
+// -----------------------------------------------------------------------------
+
+.steps { margin-top: 22px; }
+
+.stepsBar {
+  display: inline-flex;
   align-items: center;
-  gap: $gap-sm;
-  flex-wrap: wrap;
+  gap: 10px;
+  background: linear-gradient(180deg, #7A3A1C 0%, $brand-dark 100%);
+  color: $white;
+  border-radius: 20px 20px 0 0;
+  padding: 9px 24px 9px 16px;
 }
 
-.currentTask {
-  font-size: $size-hint;
-  color: $muted;
+.stepsTitle {
+  margin: 0;
+  font-family: $font-heading;
+  font-size: 17px;
+  font-weight: $weight-heading;
+  color: $white;
 }
 
-// Assignment panel
-.assignPanel {
-  @include panel;
-  margin-bottom: $gap-lg;
-  border-left: 4px solid $state-attention;
-}
-
-.assignHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: $gap-md;
-  flex-wrap: wrap;
-  margin-bottom: $gap-md;
-}
-
-.assignGrid {
+.stepList {
+  list-style: none;
+  margin: 0;
+  padding: 18px 14px 14px 22px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: $gap-lg;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 22px 26px;
+  background: #FBF6F0;
+  border: 2px solid $frame-edge;
+  border-radius: 0 20px 20px 20px;
+
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @media (min-width: 1280px) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  @media (max-width: $bp-mobile) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-.choiceList {
-  border: 1px solid $border;
-  border-radius: $radius-field;
+.step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
   background: $white;
-  max-height: 260px;
-  overflow: auto;
-  padding: 4px;
+  border: 2px solid rgba($brand-dark, 0.5);
+  border-radius: 14px;
+  padding: 10px 10px 12px 28px;
+  box-shadow: 0 2px 8px rgba(55, 35, 25, 0.08);
+
+  // The brown arrow to the next step: between every card on the one-row
+  // layout, and within each row on the three-column layout.
+  @media (min-width: 768px) and (max-width: 1279px) {
+    &:not(:nth-child(3n))::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      right: -22px;
+      width: 0;
+      height: 0;
+      margin-top: -8px;
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+      border-left: 10px solid $brand-dark;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    &:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      right: -22px;
+      width: 0;
+      height: 0;
+      margin-top: -8px;
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+      border-left: 10px solid $brand-dark;
+    }
+  }
 }
 
-.choice {
+.stepDone { border-color: $brand-dark; }
+
+// The big number sits half outside the card's corner.
+.stepNumber {
+  position: absolute;
+  top: -12px;
+  left: -14px;
+  width: 44px;
+  height: 44px;
+  border-radius: $radius-badge;
+  background: linear-gradient(180deg, #7A3A1C 0%, $brand-dark 100%);
+  color: $white;
+  border: 3px solid #FBF6F0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: $font-heading;
+  font-size: 22px;
+  font-weight: $weight-heading;
+}
+
+.stepHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stepTitle {
+  font-family: $font-heading;
+  font-size: 14px;
+  font-weight: $weight-heading;
+  color: $ink;
+}
+
+.stepCaption {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #3E3E3E;
+}
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.declined {
+  font-size: 11px;
+  color: #6B4600;
+  background: #FFF4DC;
+  border-radius: 8px;
+  padding: 6px 8px;
+
+  ul { margin: 4px 0 0; padding-left: 16px; }
+}
+
+// The pick lists.
+.dropdown { position: relative; }
+
+.dropdownButton {
   @include focus-ring;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: $gap-sm;
+  gap: 6px;
   width: 100%;
+  min-height: 56px;
+  padding: 8px;
+  border: 1px solid $line;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #FFFDFB 0%, #FBF4EC 100%);
+  box-shadow: 0 1px 3px rgba(55, 35, 25, 0.08);
   text-align: left;
-  border: none;
-  background: none;
   font-family: $font-body;
-  font-size: $size-table-cell;
-  color: $brand-dark;
-  padding: 9px 12px;
-  border-radius: $radius-action;
+  color: $ink;
+  cursor: pointer;
+  transition: border-color $transition, box-shadow $transition;
+
+  &:hover:not(:disabled) { border-color: rgba($brand-dark, 0.4); }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+.dropdownOpen { border-color: $brand-dark; }
+
+.dropdownValue {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.placeholder {
+  font-size: $size-caption;
+  color: $soft;
+}
+
+.dropdownChevron {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: $ink;
+  transform: rotate(90deg);
+  transition: transform $transition;
+}
+
+.dropdownOpen .dropdownChevron { transform: rotate(-90deg); }
+
+.dropdownList {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 4px);
+  left: 0;
+  width: max(100%, 240px);
+  max-height: 280px;
+  overflow: auto;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  background: $white;
+  border: 1px solid $line;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(55, 35, 25, 0.18);
+}
+
+.dropdownEmpty {
+  padding: 10px;
+  font-size: $size-caption;
+  color: $soft;
+}
+
+.dropdownOption {
+  @include focus-ring;
+  display: block;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  font-family: $font-body;
+  color: $ink;
   cursor: pointer;
 
-  &:hover { background: $brand-row-alt; }
+  &:hover:not(:disabled) { background: $brand-tint; }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 }
 
-.choiceSelected {
-  background: $brand-dark;
-  color: $brand-light;
+.dropdownOptionSelected { background: $brand-tint; }
 
-  &:hover { background: $brand-hover; }
+.pickRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.choiceMeta {
-  font-size: $size-hint;
-  color: $muted;
+.pickText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #333;
+  overflow-wrap: anywhere;
+
+  strong {
+    font-family: $font-heading;
+    font-size: 12.5px;
+    font-weight: $weight-heading;
+    color: $ink;
+  }
+
+  .pill { align-self: flex-start; margin-top: 2px; max-width: 100%; white-space: normal; }
 }
 
-.choiceSelected .choiceMeta { color: $brand-light; }
-
-.escalationNote {
-  margin-top: $gap-md;
-}
-
-.declinedList {
-  list-style: none;
-  margin: $gap-sm 0 0;
-  padding: 0;
+.pickWhen {
   font-family: $font-body;
-  font-size: $size-hint;
-  color: $muted;
+  font-size: 11px;
+  font-weight: $weight-body;
+  color: $soft;
 }
 
-.declinedList li { padding: 2px 0; }
+.ok   { color: #13693A; font-weight: 600; }
+.warn { color: #8A4B00; font-size: 11px; }
 
-.staleNote {
-  @include caption;
-  display: block;
-  margin-top: $gap-md;
+.carThumb,
+.docThumb {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 36px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carThumb { background: #EEF0F2; color: #52616F; }
+.docThumb { background: #FDE9D7; color: #D9822B; width: 38px; }
+
+.confirmCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid $line;
+  border-radius: 10px;
+  background: $white;
+}
+
+.override { display: flex; flex-direction: column; gap: 4px; }
+
+.allocateButton {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #7A3A1C 0%, $brand-dark 100%);
+  font-size: 15px;
+  font-weight: $weight-heading;
+}
+
+.textButton {
+  @include focus-ring;
+  align-self: center;
+  border: none;
+  background: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: $font-body;
+  font-size: 12px;
+  color: $soft;
+  cursor: pointer;
+
+  &:hover { color: $brand-dark; text-decoration: underline; }
+}
+
+.notifyList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notifyRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: #F4F4F4;
+  font-size: 12px;
+  color: $ink;
+}
+
+.notifyDone { background: #EAF7EE; }
+
+.notifyWho { font-weight: 600; }
+
+.notifyState {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: $soft;
+}
+
+.notifyTick {
+  width: 18px;
+  height: 18px;
+  border-radius: $radius-badge;
+  background: #B9BEC4;
+  color: $white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notifyDone .notifyState { color: #13693A; }
+.notifyDone .notifyTick { background: #22A45A; }
+
+.flow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2px;
+  min-width: 0;
+
+  // Six narrow cards in a row: the four statuses sit two by two instead.
+  @media (min-width: 1280px) and (max-width: 1919px) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 4px;
+
+    .flowArrow { display: none; }
+  }
+}
+
+.flowStep {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  line-height: 1.2;
+  font-weight: 600;
+  color: $ink;
+  text-align: center;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+// The trip just allocated, where it has got to.
+.flowNow {
+  background: $brand-tint;
+  box-shadow: inset 0 0 0 1px $brand-dark;
+}
+
+.flowDot {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: $radius-badge;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: $white;
+}
+
+.flowBlue  { background: #2F6FD8; }
+.flowGreen { background: #22A45A; }
+.flowRed   { background: #E5352B; }
+
+.flowArrow {
+  position: relative;
+  flex: 1 1 6px;
+  min-width: 4px;
+  height: 2px;
+  margin-top: 17px;
+  background: $ink;
+
+  &::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: -3px;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 6px solid $ink;
+  }
 }

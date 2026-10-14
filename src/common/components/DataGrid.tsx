@@ -127,7 +127,9 @@ export function DataGrid<T>(props: IDataGridProps<T>): React.ReactElement {
 
   return (
     <div
-      className={styles.gridRegion}
+      className={[styles.gridRegion, openFilter ? styles.gridRegionFiltering : '']
+        .filter(Boolean)
+        .join(' ')}
       ref={regionRef}
       tabIndex={0}
       role="region"

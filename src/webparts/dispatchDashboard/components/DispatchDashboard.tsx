@@ -5,23 +5,25 @@
  * READ. Interactive in under 2.5 seconds on a warm cache.
  *
  * COUNTERS ARE FILTER SHORTCUTS, NOT STATIC NUMBERS. Each one filters the
- * grids below it rather than just reporting a figure.
+ * grids below it rather than just reporting a figure. The side menu is the
+ * same set of shortcuts under the names a Coordinator looks for.
+ *
+ * Laid out as the client's "Coordinator - Fleet Management Dashboard" design:
+ * a title tab, a side menu, tinted counter cards, two compact tables, the
+ * availability panel down the right, and the manual allocation as six
+ * numbered steps along the bottom.
  */
 
 import * as React from 'react';
 import { ConfirmDialog } from '../../../common/components/ConfirmDialog';
-import { DataGrid, IColumn, RowActions } from '../../../common/components/DataGrid';
+import { DataGrid, IColumn } from '../../../common/components/DataGrid';
+import { Icon, IconName } from '../../../common/components/Icons';
 import {
-  Badge,
   Button,
-  Counter,
   ErrorBanner,
   FormRow,
   Loading,
-  Notice,
   PageShell,
-  Reference,
-  SectionHeading,
   Select,
   TextField,
 } from '../../../common/components/Shared';
@@ -33,6 +35,8 @@ import {
   ITransportRequest,
   ITripCard,
   IVehicle,
+  RequestType,
+  SemanticState,
   driverState,
   requestState,
   tripState,
@@ -44,10 +48,9 @@ import {
 } from '../../../common/rules/dispatchRules';
 import { ICurrentUser, IServices } from '../../../common/services/IServices';
 import {
-  formatDateTime,
+  formatDateLong,
   formatTime,
   gulfMonthBounds,
-  relativeFromNow,
 } from '../../../common/utils/dates';
 import styles from './DispatchDashboard.module.scss';
 
@@ -56,6 +59,8 @@ export interface IDispatchDashboardProps {
   user?: ICurrentUser;
   bootstrapError?: unknown;
   refreshMs: number;
+  /** The Fleet Reports page, for the side menu. Left out when not given. */
+  reportsUrl?: string;
 }
 
 type CounterKey =
@@ -68,11 +73,300 @@ type CounterKey =
 
 type AvailabilityTab = 'drivers' | 'vehicles';
 
+const TITLE = 'Coordinator – Fleet Management Dashboard';
+
+/** The request types, as short as the design writes them. Display only. */
+const SHORT_TYPE: Record<RequestType, string> = {
+  'Client or Client Guest': 'Client',
+  'Staff': 'Staff',
+  'Items or Documents': 'Items',
+};
+
+/** "25 Oct 2026 10:00" - the design's date and time. Gulf time, as everywhere. */
+function when(d?: Date): string {
+  return d ? `${formatDateLong(d)} ${formatTime(d)}` : '';
+}
+
+function vehicleName(v?: IVehicle): string {
+  if (!v) return '';
+  const name = [v.make, v.model].filter(Boolean).join(' ');
+  return (name || v.plateNo) + (v.colour ? ` (${v.colour})` : '');
+}
+
+// -----------------------------------------------------------------------------
+// Small parts
+// -----------------------------------------------------------------------------
+
+const PILL_CLASS: Record<SemanticState, string> = {
+  healthy: styles.pillHealthy,
+  attention: styles.pillAttention,
+  progress: styles.pillProgress,
+  exception: styles.pillException,
+  neutral: styles.pillNeutral,
+};
+
+/** The two statuses the design draws as SOLID pills: the trip is moving or done. */
+const SOLID: string[] = ['In Transit', 'Completed'];
+
+/** A status, as a pill. Always carries its word. */
+function Pill({ state, label }: { state: SemanticState; label: string }): JSX.Element {
+  return (
+    <span
+      className={[
+        styles.pill,
+        PILL_CLASS[state],
+        SOLID.indexOf(label) !== -1 ? styles.pillSolid : '',
+      ].join(' ')}
+    >
+      <span className={styles.pillDot} aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
+/** The round initials in place of a photograph. */
+function Avatar({ name, large }: { name: string; large?: boolean }): JSX.Element {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join('');
+  return (
+    <span className={[styles.avatar, large ? styles.avatarLarge : ''].join(' ')} aria-hidden="true">
+      {initials || '?'}
+    </span>
+  );
+}
+
+/** Long map addresses are cut to one line; the whole text is in the tooltip. */
+function Clip({ text }: { text?: string }): JSX.Element {
+  return (
+    <span className={styles.clip} title={text}>
+      {text || '—'}
+    </span>
+  );
+}
+
+/** Closes a popup on Escape and on a click outside it. */
+function useDismiss(
+  open: boolean,
+  close: () => void,
+  inside: (React.RefObject<HTMLElement>)[],
+): void {
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as Node;
+      if (inside.some((r) => r.current?.contains(t))) return;
+      close();
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+}
+
+interface IMenuItem {
+  text: string;
+  icon: IconName;
+  danger?: boolean;
+  href?: string;
+  onSelect?: () => void;
+}
+
+/**
+ * The "..." menu on a row. It is drawn fixed to the window, not inside the
+ * grid, so the grid's own scrolling cannot cut it off.
+ */
+function ActionMenu({ label, items }: { label: string; items: IMenuItem[] }): JSX.Element {
+  const [open, setOpen] = React.useState(false);
+  const [pos, setPos] = React.useState<{ top: number; left: number } | undefined>();
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  useDismiss(open, () => setOpen(false), [buttonRef, menuRef]);
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const close = (): void => setOpen(false);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+
+  const show = (): void => {
+    const r = buttonRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setPos({ top: r.bottom + 4, left: Math.max(8, r.right - 200) });
+    setOpen(true);
+  };
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={styles.dotsButton}
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => (open ? setOpen(false) : show())}
+      >
+        <span aria-hidden="true">&bull;&bull;&bull;</span>
+      </button>
+      {open && pos ? (
+        <div ref={menuRef} role="menu" className={styles.menu} style={{ top: pos.top, left: pos.left }}>
+          {items.map((it) =>
+            it.href ? (
+              <a
+                key={it.text}
+                role="menuitem"
+                className={styles.menuItem}
+                href={it.href}
+                onClick={() => setOpen(false)}
+              >
+                <Icon name={it.icon} size={16} />
+                {it.text}
+              </a>
+            ) : (
+              <button
+                key={it.text}
+                type="button"
+                role="menuitem"
+                className={[styles.menuItem, it.danger ? styles.menuItemDanger : ''].join(' ')}
+                onClick={() => {
+                  setOpen(false);
+                  if (it.onSelect) it.onSelect();
+                }}
+              >
+                <Icon name={it.icon} size={16} />
+                {it.text}
+              </button>
+            ),
+          )}
+        </div>
+      ) : undefined}
+    </>
+  );
+}
+
+/** A white card with a title row, as in the design. */
+function Box({ title, action, className, children }: {
+  title: string;
+  action?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <section className={[styles.box, className ?? ''].join(' ')} aria-label={title}>
+      <div className={styles.boxHead}>
+        <h2 className={styles.boxTitle}>{title}</h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** "View All ->", or "Back" while that view is open. */
+function ViewAll({ open, onClick }: { open: boolean; onClick: () => void }): JSX.Element {
+  return (
+    <button type="button" className={styles.viewAll} onClick={onClick} aria-pressed={open}>
+      {open ? 'Back' : 'View All'}
+      <Icon name={open ? 'chevronLeft' : 'arrowRight'} size={15} />
+    </button>
+  );
+}
+
+/**
+ * A pick list drawn as a card with a chevron, as the allocation steps show
+ * it. It is a real list box: it opens on the card, and closes on a choice,
+ * on Escape and on a click anywhere else.
+ */
+function Dropdown({ label, value, placeholder, disabled, options, onPick }: {
+  label: string;
+  value?: React.ReactNode;
+  placeholder: string;
+  disabled?: boolean;
+  options: { key: number; content: React.ReactNode; selected: boolean; disabled?: boolean }[];
+  onPick: (key: number) => void;
+}): JSX.Element {
+  const [open, setOpen] = React.useState(false);
+  const wrapRef = React.useRef<HTMLDivElement>(null);
+  useDismiss(open, () => setOpen(false), [wrapRef]);
+
+  return (
+    <div className={styles.dropdown} ref={wrapRef}>
+      <button
+        type="button"
+        className={[styles.dropdownButton, open ? styles.dropdownOpen : ''].join(' ')}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={styles.srOnly}>{`${label}: `}</span>
+        <span className={styles.dropdownValue}>
+          {value ?? <span className={styles.placeholder}>{placeholder}</span>}
+        </span>
+        <span className={styles.dropdownChevron} aria-hidden="true">
+          <Icon name="chevronRight" size={18} />
+        </span>
+      </button>
+      {open ? (
+        <ul className={styles.dropdownList} role="listbox" aria-label={label}>
+          {options.length === 0 ? (
+            <li className={styles.dropdownEmpty}>Nothing to choose from.</li>
+          ) : (
+            options.map((o) => (
+              <li key={o.key} role="option" aria-selected={o.selected}>
+                <button
+                  type="button"
+                  className={[styles.dropdownOption, o.selected ? styles.dropdownOptionSelected : ''].join(' ')}
+                  disabled={o.disabled}
+                  onClick={() => {
+                    setOpen(false);
+                    onPick(o.key);
+                  }}
+                >
+                  {o.content}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      ) : undefined}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// The dashboard
+// -----------------------------------------------------------------------------
+
+interface ILastAllocated {
+  requestItemId: number;
+  requestId: string;
+  driverName: string;
+  vehicleName: string;
+}
+
 export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
   services,
   user,
   bootstrapError,
   refreshMs,
+  reportsUrl,
 }) => {
   const [snapshot, setSnapshot] = React.useState<IDispatchSnapshot | undefined>();
   const [loading, setLoading] = React.useState(true);
@@ -86,6 +380,9 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
   const [rejectTarget, setRejectTarget] = React.useState<ITransportRequest | undefined>();
   const [cancelTarget, setCancelTarget] = React.useState<ITransportRequest | undefined>();
   const [busy, setBusy] = React.useState(false);
+  const [lastAllocated, setLastAllocated] = React.useState<ILastAllocated | undefined>();
+
+  const stepsRef = React.useRef<HTMLElement>(null);
 
   /**
    * The property filter.
@@ -163,6 +460,20 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
     return snapshot.pendingRequests.filter(inProperty);
   }, [snapshot, activeCounter, inProperty]);
 
+  const allPending: ITransportRequest[] = React.useMemo(
+    () => (snapshot ? snapshot.pendingRequests.filter(inProperty) : []),
+    [snapshot, inProperty],
+  );
+
+  const toggle = (key: CounterKey | undefined): void =>
+    setActiveCounter(activeCounter === key ? undefined : key);
+
+  const vehiclesById = React.useMemo(() => {
+    const map = new Map<number, IVehicle>();
+    (snapshot?.vehicles ?? []).forEach((v) => map.set(v.id, v));
+    return map;
+  }, [snapshot]);
+
   // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
@@ -170,6 +481,9 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
   const openAssign = async (request: ITransportRequest): Promise<void> => {
     setAssignTarget(request);
     setOffersForTarget([]);
+    window.setTimeout(() => {
+      stepsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
     if (!services) return;
     try {
       const offers = await services.dispatch.getOffersForRequest(request.id);
@@ -219,6 +533,42 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
     }
   };
 
+  const doAssign = async (
+    driverId: number,
+    vehicleId: number,
+    isOverride: boolean,
+    reason?: string,
+  ): Promise<void> => {
+    if (!services || !assignTarget) return;
+    setBusy(true);
+    try {
+      const result = await services.dispatch.manualAssign(
+        assignTarget.id,
+        driverId,
+        vehicleId,
+        isOverride,
+        reason,
+      );
+      if (!result.ok) {
+        setError(new Error(result.message));
+        return;
+      }
+      // Kept so steps 5 and 6 can show what was just done and follow the trip.
+      setLastAllocated({
+        requestItemId: assignTarget.id,
+        requestId: assignTarget.requestId,
+        driverName: snapshot?.drivers.filter((d) => d.id === driverId)[0]?.driverName ?? '',
+        vehicleName: vehicleName(vehiclesById.get(vehicleId)),
+      });
+      setAssignTarget(undefined);
+      await load();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // ---------------------------------------------------------------------------
   // Grids
   // ---------------------------------------------------------------------------
@@ -227,14 +577,18 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
     {
       key: 'id',
       label: 'ID',
-      render: (c) => <Reference>{c.request?.requestId ?? c.trip.tripId}</Reference>,
-      width: '120px',
+      render: (c) => <span className={styles.ref}>{c.request?.requestId ?? c.trip.tripId}</span>,
     },
-    { key: 'pickup', label: 'Pickup', render: (c) => c.request.pickupText, filterValue: (c) => c.request.pickupText },
+    {
+      key: 'pickup',
+      label: 'Pickup',
+      render: (c) => <Clip text={c.request.pickupText} />,
+      filterValue: (c) => c.request.pickupText,
+    },
     {
       key: 'destination',
       label: 'Destination',
-      render: (c) => c.request.dropOffText,
+      render: (c) => <Clip text={c.request.dropOffText} />,
       filterValue: (c) => c.request.dropOffText,
     },
     {
@@ -246,169 +600,168 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
     {
       key: 'vehicle',
       label: 'Vehicle',
-      render: (c) => c.vehiclePlate || '—',
+      render: (c) => {
+        const v = c.trip.vehicle ? vehiclesById.get(c.trip.vehicle.id) : undefined;
+        const name = v ? [v.make, v.model].filter(Boolean).join(' ') : '';
+        return <span title={c.vehiclePlate}>{name || c.vehiclePlate || '—'}</span>;
+      },
       filterValue: (c) => c.vehiclePlate,
     },
     {
       key: 'status',
       label: 'Status',
-      render: (c) => <Badge state={tripState(c.trip.tripStatus)} label={c.trip.tripStatus} />,
+      render: (c) => <Pill state={tripState(c.trip.tripStatus)} label={c.trip.tripStatus} />,
       filterValue: (c) => c.trip.tripStatus,
-      width: '130px',
     },
     {
       key: 'eta',
       label: 'ETA',
-      // Always with its last-updated stamp, so nobody mistakes a typed-in
-      // figure for a live calculation.
+      // A typed-in figure, so the time it was last set is in the tooltip.
       render: (c) =>
         c.trip.etaMinutes === undefined ? (
-          <span className={styles.currentTask}>not set</span>
+          <span className={styles.muted}>&ndash;</span>
         ) : (
-          <>
-            approx. {c.trip.etaMinutes} min
-            {c.trip.etaUpdatedOn ? (
-              <span className={styles.currentTask}>
-                {' '}
-                &middot; {relativeFromNow(c.trip.etaUpdatedOn)}
-              </span>
-            ) : undefined}
-          </>
+          <span title={c.trip.etaUpdatedOn ? `Estimate set ${when(c.trip.etaUpdatedOn)}` : undefined}>
+            {c.trip.etaMinutes} mins
+          </span>
         ),
-      width: '160px',
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      render: (c) => (
+        <ActionMenu
+          label={`Actions for ${c.request.requestId}`}
+          items={[
+            { text: 'Cancel trip', icon: 'x', danger: true, onSelect: () => setCancelTarget(c.request) },
+          ]}
+        />
+      ),
     },
   ];
 
   const pendingColumns: IColumn<ITransportRequest>[] = [
-    {
-      key: 'id',
-      label: 'ID',
-      render: (r) => <Reference>{r.requestId}</Reference>,
-      width: '120px',
-    },
+    { key: 'id', label: 'ID', render: (r) => <span className={styles.ref}>{r.requestId}</span> },
     {
       key: 'when',
-      label: 'Date and time',
-      render: (r) => formatDateTime(r.requiredDateTime),
-      width: '150px',
+      label: 'Date & Time',
+      render: (r) => <span className={styles.nowrap}>{when(r.requiredDateTime)}</span>,
     },
     {
       key: 'type',
-      label: 'Request type',
-      render: (r) => r.requestType,
-      filterValue: (r) => r.requestType,
+      label: 'Request Type',
+      render: (r) => SHORT_TYPE[r.requestType] ?? r.requestType,
+      filterValue: (r) => SHORT_TYPE[r.requestType] ?? r.requestType,
     },
     {
       key: 'vehicleType',
-      label: 'Vehicle type',
+      label: 'Vehicle Type',
       render: (r) => r.vehicleTypeRequested?.title ?? '—',
       filterValue: (r) => r.vehicleTypeRequested?.title ?? '',
     },
     {
       key: 'status',
       label: 'Status',
-      render: (r) => <Badge state={requestState(r.status)} label={r.status} />,
+      render: (r) => <Pill state={requestState(r.status)} label={r.status} />,
       filterValue: (r) => r.status,
-      width: '170px',
     },
     {
       key: 'actions',
       label: 'Actions',
       render: (r) => (
-        <RowActions>
-          <Button
-            kind="action"
-            onClick={() => {
-              openAssign(r).catch(() => undefined);
-            }}
-          >
-            Assign
-          </Button>
-          <Button kind="action" onClick={() => setRejectTarget(r)}>
-            Reject
-          </Button>
-          <Button kind="action" onClick={() => setCancelTarget(r)}>
-            Cancel
-          </Button>
-        </RowActions>
+        <ActionMenu
+          label={`Actions for ${r.requestId}`}
+          items={[
+            {
+              text: 'Allocate driver & vehicle',
+              icon: 'car',
+              onSelect: () => {
+                openAssign(r).catch(() => undefined);
+              },
+            },
+            { text: 'Reject request', icon: 'x', danger: true, onSelect: () => setRejectTarget(r) },
+            { text: 'Cancel request', icon: 'x', danger: true, onSelect: () => setCancelTarget(r) },
+          ]}
+        />
       ),
-      width: '200px',
     },
   ];
 
+  const taskFor = (match: (t: ITripCard) => boolean): JSX.Element => {
+    const open = (snapshot?.ongoingTrips ?? []).filter(match);
+    if (open.length === 0) return <span className={styles.muted}>&ndash;</span>;
+    return (
+      <span title={open.map((t) => t.request.dropOffText).join(', ')}>
+        {open.map((t) => t.request.requestId).join(', ')}
+      </span>
+    );
+  };
+
   const driverColumns: IColumn<IDriver>[] = [
-    { key: 'name', label: 'Driver', render: (d) => d.driverName, filterValue: (d) => d.driverName },
+    {
+      key: 'name',
+      label: 'Driver',
+      render: (d) => (
+        <span className={styles.person}>
+          <Avatar name={d.driverName} />
+          <span className={styles.personName}>{d.driverName}</span>
+        </span>
+      ),
+      filterValue: (d) => d.driverName,
+    },
     {
       key: 'status',
       label: 'Status',
-      render: (d) => <Badge state={driverState(d.status)} label={d.status} />,
+      render: (d) => <Pill state={driverState(d.status)} label={d.status} />,
       filterValue: (d) => d.status,
-      width: '140px',
     },
     {
       key: 'task',
-      label: 'Current task',
-      render: (d) => {
-        const open = (snapshot?.ongoingTrips ?? []).filter(
-          (t) => t.trip.driver?.id === d.id,
-        );
-        if (open.length === 0) return <span className={styles.currentTask}>None</span>;
-        return (
-          <span>
-            {open.map((t) => t.request.dropOffText).join(', ')}
-            <span className={styles.currentTask}> ({open.length} open)</span>
-          </span>
-        );
-      },
+      label: 'Current Task',
+      render: (d) => taskFor((t) => t.trip.driver?.id === d.id),
     },
     {
-      key: 'cap',
-      label: 'Cap',
-      render: (d) => d.maxConcurrentTrips,
-      numeric: true,
-      width: '70px',
-    },
-    {
-      key: 'property',
-      label: 'Property',
-      render: (d) => d.homeProperty?.title ?? '—',
-      filterValue: (d) => d.homeProperty?.title ?? '',
+      key: 'actions',
+      label: 'Actions',
+      render: (d) =>
+        d.phone ? (
+          <ActionMenu
+            label={`Actions for ${d.driverName}`}
+            items={[{ text: `Call ${d.phone}`, icon: 'phone', href: `tel:${d.phone}` }]}
+          />
+        ) : (
+          <span className={styles.muted}>&ndash;</span>
+        ),
     },
   ];
 
   const vehicleColumns: IColumn<IVehicle>[] = [
-    { key: 'plate', label: 'Plate', render: (v) => v.plateNo, filterValue: (v) => v.plateNo },
     {
-      key: 'vehicle',
+      key: 'plate',
       label: 'Vehicle',
-      render: (v) => [v.colour, v.make, v.model].filter(Boolean).join(' ') || '—',
-    },
-    {
-      key: 'type',
-      label: 'Type',
-      render: (v) => v.vehicleType?.title ?? '—',
-      filterValue: (v) => v.vehicleType?.title ?? '',
+      render: (v) => (
+        <span className={styles.person}>
+          <span className={styles.vehicleIcon} aria-hidden="true">
+            <Icon name="car" size={16} />
+          </span>
+          <span className={styles.personName}>
+            {vehicleName(v)}
+            <span className={styles.subLine}>{v.plateNo}</span>
+          </span>
+        </span>
+      ),
+      filterValue: (v) => v.plateNo,
     },
     {
       key: 'status',
       label: 'Status',
-      render: (v) => <Badge state={vehicleState(v.status)} label={v.status} />,
+      render: (v) => <Pill state={vehicleState(v.status)} label={v.status} />,
       filterValue: (v) => v.status,
-      width: '170px',
     },
     {
       key: 'task',
-      label: 'Current task',
-      render: (v) => {
-        const open = (snapshot?.ongoingTrips ?? []).filter(
-          (t) => t.trip.vehicle?.id === v.id,
-        );
-        return open.length === 0 ? (
-          <span className={styles.currentTask}>None</span>
-        ) : (
-          <span>{open.map((t) => t.request.dropOffText).join(', ')}</span>
-        );
-      },
+      label: 'Current Task',
+      render: (v) => taskFor((t) => t.trip.vehicle?.id === v.id),
     },
   ];
 
@@ -418,7 +771,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
 
   if (!services || !user) {
     return (
-      <PageShell heading="Dispatch dashboard">
+      <PageShell heading={TITLE}>
         <ErrorBanner error={bootstrapError} />
         {!bootstrapError ? <Loading /> : undefined}
       </PageShell>
@@ -427,7 +780,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
 
   if (loading && !snapshot) {
     return (
-      <PageShell heading="Dispatch dashboard">
+      <PageShell heading={TITLE}>
         <Loading what="Loading dispatch" />
       </PageShell>
     );
@@ -435,262 +788,295 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
 
   const counters = snapshot?.counters;
 
+  const showDrivers = (): void => {
+    toggle('availableDrivers');
+    setTab('drivers');
+  };
+  const showVehicles = (): void => {
+    toggle('availableVehicles');
+    setTab('vehicles');
+  };
+
+  const counterCards: {
+    key: CounterKey;
+    label: string;
+    value: number;
+    meta: string;
+    icon: IconName;
+    tone: string;
+    onClick: () => void;
+  }[] = counters
+    ? [
+        { key: 'ongoing', label: 'Ongoing Trips', value: counters.ongoingTrips, meta: 'En route or in transit', icon: 'car', tone: styles.toneBlue, onClick: () => toggle('ongoing') },
+        { key: 'pending', label: 'Pending Requests', value: counters.pendingRequests, meta: 'Submitted, broadcasting or awaiting you', icon: 'clock', tone: styles.toneOrange, onClick: () => toggle('pending') },
+        { key: 'completed', label: 'Completed Trips', value: counters.completedTrips, meta: 'In the selected period', icon: 'check', tone: styles.toneGreen, onClick: () => toggle('completed') },
+        { key: 'availableDrivers', label: 'Available Drivers', value: counters.availableDrivers, meta: 'Active, not on leave, under cap', icon: 'user', tone: styles.tonePurple, onClick: showDrivers },
+        { key: 'availableVehicles', label: 'Available Vehicles', value: counters.availableVehicles, meta: 'Active, no open trip', icon: 'car', tone: styles.toneTeal, onClick: showVehicles },
+        { key: 'allocated', label: 'Allocated Vehicles/Drivers', value: counters.allocatedPairs, meta: 'Driver and vehicle on an open trip', icon: 'car', tone: styles.toneGrey, onClick: () => toggle('allocated') },
+      ]
+    : [];
+
+  const ongoingFocused = activeCounter === 'ongoing';
+  const pendingFocused = activeCounter === 'pending';
+  const availFocused = activeCounter === 'availableDrivers' || activeCounter === 'availableVehicles';
+
+  const menu: { text: string; icon: IconName; active: boolean; onClick?: () => void; href?: string }[] = [
+    { text: 'Dashboard', icon: 'home', active: activeCounter === undefined, onClick: () => setActiveCounter(undefined) },
+    { text: 'Booking Requests', icon: 'doc', active: pendingFocused, onClick: () => toggle('pending') },
+    { text: 'Ongoing Trips', icon: 'navigation', active: ongoingFocused, onClick: () => toggle('ongoing') },
+    { text: 'Completed Trips', icon: 'check', active: activeCounter === 'completed', onClick: () => toggle('completed') },
+    { text: 'Drivers', icon: 'user', active: activeCounter === 'availableDrivers', onClick: showDrivers },
+    { text: 'Vehicles', icon: 'car', active: activeCounter === 'availableVehicles', onClick: showVehicles },
+  ];
+  if (reportsUrl) menu.push({ text: 'Reports', icon: 'chart', active: false, href: reportsUrl });
+
   return (
-    <PageShell
-      heading="Dispatch dashboard"
-      caption={
-        snapshot
-          ? `Last refreshed ${formatTime(snapshot.loadedAt)}. Counters filter the grids below.`
-          : undefined
-      }
-      actions={
-        <Button kind="secondary" onClick={() => load().catch(() => undefined)}>
-          Refresh
-        </Button>
-      }
-    >
-      <ErrorBanner error={error} onDismiss={() => setError(undefined)} />
+    <div className={styles.page}>
+      <div className={styles.titleRow}>
+        <header className={styles.titleBar}>
+          <span className={styles.titleIcon} aria-hidden="true">
+            <Icon name="user" size={26} />
+          </span>
+          <h1 className={styles.title}>{TITLE}</h1>
+        </header>
 
-      {snapshot && snapshot.escalated.length > 0 ? (
-        <Notice tone="attention">
-          <strong>
-            {snapshot.escalated.length} request
-            {snapshot.escalated.length === 1 ? '' : 's'} need allocating.
-          </strong>{' '}
-          Nobody accepted these within the offer window. They are pinned to the
-          top of Pending requests.
-        </Notice>
-      ) : undefined}
-
-      {counters ? (
-        <div className={styles.section}>
-          <div className={styles.periodRow}>
-            <span className={styles.periodLabel}>Property:</span>
-            <Select
-              value={propertyFilter === undefined ? '' : String(propertyFilter)}
-              onChange={(e) =>
-                setPropertyFilter(e.target.value ? parseInt(e.target.value, 10) : undefined)
-              }
-              aria-label="Narrow the dashboard to one property"
-              style={{ width: 'auto' }}
-            >
-              <option value="">All properties</option>
-              {properties.map((pr) => (
-                <option key={pr.id} value={pr.id}>
-                  {pr.title}
-                </option>
-              ))}
-            </Select>
-
-            <span className={styles.periodLabel}>Completed counter period:</span>
-            <Select
-              value={`${period.from.toISOString()}`}
-              onChange={(e) => {
-                const months = parseInt(e.target.value, 10);
-                const now = new Date();
-                const bounds = gulfMonthBounds(
-                  new Date(now.getFullYear(), now.getMonth() - months, 1),
-                );
-                setPeriod({ from: bounds.from, to: gulfMonthBounds(now).to });
-              }}
-              aria-label="Period for the completed trips counter"
-              style={{ width: 'auto' }}
-            >
-              <option value={period.from.toISOString()}>This month</option>
-              <option value="1">Last 2 months</option>
-              <option value="2">Last 3 months</option>
-            </Select>
-          </div>
-
-          <div
-            className={styles.section}
-            role="group"
-            aria-label="Dispatch counters. Each one filters the grids below."
-          >
-            <CounterRow>
-              <Counter
-                label="Ongoing trips"
-                value={counters.ongoingTrips}
-                meta="En route or in transit"
-                active={activeCounter === 'ongoing'}
-                onClick={() =>
-                  setActiveCounter(activeCounter === 'ongoing' ? undefined : 'ongoing')
-                }
-              />
-              <Counter
-                label="Pending requests"
-                value={counters.pendingRequests}
-                meta="Submitted, broadcasting or awaiting you"
-                active={activeCounter === 'pending'}
-                onClick={() =>
-                  setActiveCounter(activeCounter === 'pending' ? undefined : 'pending')
-                }
-              />
-              <Counter
-                label="Completed trips"
-                value={counters.completedTrips}
-                meta="In the selected period"
-                active={activeCounter === 'completed'}
-                onClick={() =>
-                  setActiveCounter(activeCounter === 'completed' ? undefined : 'completed')
-                }
-              />
-              <Counter
-                label="Available drivers"
-                value={counters.availableDrivers}
-                meta="Active, not on leave, under cap"
-                active={activeCounter === 'availableDrivers'}
-                onClick={() => {
-                  setActiveCounter(
-                    activeCounter === 'availableDrivers' ? undefined : 'availableDrivers',
-                  );
-                  setTab('drivers');
-                }}
-              />
-              <Counter
-                label="Available vehicles"
-                value={counters.availableVehicles}
-                meta="Active, no open trip"
-                active={activeCounter === 'availableVehicles'}
-                onClick={() => {
-                  setActiveCounter(
-                    activeCounter === 'availableVehicles' ? undefined : 'availableVehicles',
-                  );
-                  setTab('vehicles');
-                }}
-              />
-              <Counter
-                label="Allocated pairs"
-                value={counters.allocatedPairs}
-                meta="Driver and vehicle on an open trip"
-                active={activeCounter === 'allocated'}
-                onClick={() =>
-                  setActiveCounter(activeCounter === 'allocated' ? undefined : 'allocated')
-                }
-              />
-            </CounterRow>
-          </div>
-        </div>
-      ) : undefined}
-
-      {assignTarget && snapshot ? (
-        <AssignmentPanel
-          request={assignTarget}
-          snapshot={snapshot}
-          offers={offersForTarget}
-          busy={busy}
-          onClose={() => setAssignTarget(undefined)}
-          onAssign={async (driverId, vehicleId, isOverride, reason) => {
-            if (!services) return;
-            setBusy(true);
-            try {
-              const result = await services.dispatch.manualAssign(
-                assignTarget.id,
-                driverId,
-                vehicleId,
-                isOverride,
-                reason,
-              );
-              if (!result.ok) {
-                setError(new Error(result.message));
-                return;
-              }
-              setAssignTarget(undefined);
-              await load();
-            } catch (e) {
-              setError(e);
-            } finally {
-              setBusy(false);
+        <div className={styles.toolbar}>
+          <Select
+            value={propertyFilter === undefined ? '' : String(propertyFilter)}
+            onChange={(e) =>
+              setPropertyFilter(e.target.value ? parseInt(e.target.value, 10) : undefined)
             }
-          }}
-        />
-      ) : undefined}
-
-      {activeCounter !== 'pending' ? (
-        <section className={styles.section}>
-          <div className={styles.sectionHead}>
-            <SectionHeading>Ongoing trips</SectionHeading>
-          </div>
-          <DataGrid
-            caption="Ongoing trips, soonest required time first"
-            captionVisuallyHidden
-            columns={ongoingColumns}
-            rows={visibleTrips}
-            rowKey={(c) => c.trip.id}
-            emptyMessage="No trips are under way."
-          />
-        </section>
-      ) : undefined}
-
-      {activeCounter !== 'ongoing' ? (
-        <section className={styles.section}>
-          <div className={styles.sectionHead}>
-            <SectionHeading>Pending requests</SectionHeading>
-            <span className={styles.periodLabel}>
-              Oldest first. Anything awaiting you is pinned to the top.
-            </span>
-          </div>
-          <DataGrid
-            caption="Pending requests, oldest first, with escalations pinned to the top"
-            captionVisuallyHidden
-            columns={pendingColumns}
-            rows={visibleRequests}
-            rowKey={(r) => r.id}
-            isPinned={(r) => r.status === 'Awaiting Coordinator'}
-            emptyMessage="Nothing is waiting to be allocated."
-          />
-        </section>
-      ) : undefined}
-
-      <section className={styles.section}>
-        <SectionHeading>Availability</SectionHeading>
-        <div className={styles.tabs} role="tablist" aria-label="Availability">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'drivers'}
-            className={[styles.tab, tab === 'drivers' ? styles.tabActive : ''].join(' ')}
-            onClick={() => setTab('drivers')}
+            aria-label="Narrow the dashboard to one property"
           >
-            Drivers ({snapshot?.drivers.length ?? 0})
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'vehicles'}
-            className={[styles.tab, tab === 'vehicles' ? styles.tabActive : ''].join(' ')}
-            onClick={() => setTab('vehicles')}
+            <option value="">All properties</option>
+            {properties.map((pr) => (
+              <option key={pr.id} value={pr.id}>
+                {pr.title}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={`${period.from.toISOString()}`}
+            onChange={(e) => {
+              const months = parseInt(e.target.value, 10);
+              const now = new Date();
+              const bounds = gulfMonthBounds(
+                new Date(now.getFullYear(), now.getMonth() - months, 1),
+              );
+              setPeriod({ from: bounds.from, to: gulfMonthBounds(now).to });
+            }}
+            aria-label="Period for the completed trips counter"
           >
-            Vehicles ({snapshot?.vehicles.length ?? 0})
-          </button>
+            <option value={period.from.toISOString()}>This month</option>
+            <option value="1">Last 2 months</option>
+            <option value="2">Last 3 months</option>
+          </Select>
+          <span className={styles.refreshed}>
+            {snapshot ? `Refreshed ${formatTime(snapshot.loadedAt)}` : ''}
+          </span>
+          <Button kind="secondary" onClick={() => load().catch(() => undefined)} aria-label="Refresh">
+            <Icon name="refresh" size={16} />
+          </Button>
         </div>
+      </div>
 
-        {tab === 'drivers' ? (
-          <DataGrid
-            caption="Driver availability"
-            captionVisuallyHidden
-            columns={driverColumns}
-            rows={snapshot?.drivers ?? []}
-            rowKey={(d) => d.id}
-            emptyMessage="No drivers are set up for your property."
-          />
-        ) : (
-          <DataGrid
-            caption="Vehicle availability"
-            captionVisuallyHidden
-            columns={vehicleColumns}
-            rows={snapshot?.vehicles ?? []}
-            rowKey={(v) => v.id}
-            emptyMessage="No vehicles are set up for your property."
-          />
-        )}
+      <div className={styles.frame}>
+        <nav className={styles.sidebar} aria-label="Fleet management">
+          <div className={styles.sidebarTitle}>
+            <Icon name="car" size={26} />
+            Fleet Management
+          </div>
+          <ul className={styles.menuList}>
+            {menu.map((m) => (
+              <li key={m.text}>
+                {m.href ? (
+                  <a className={styles.navItem} href={m.href}>
+                    <Icon name={m.icon} size={19} />
+                    {m.text}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className={[styles.navItem, m.active ? styles.navItemActive : ''].join(' ')}
+                    aria-current={m.active ? 'true' : undefined}
+                    onClick={m.onClick}
+                  >
+                    <Icon name={m.icon} size={19} />
+                    {m.text}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </nav>
 
-        <span className={styles.staleNote}>
-          Driver and vehicle status is maintained by the dispatch flows. If a
-          status here looks wrong, it was probably edited by hand in the list -
-          the nightly reconciliation will correct it.
-        </span>
-      </section>
+        <div className={styles.main}>
+          <ErrorBanner error={error} onDismiss={() => setError(undefined)} />
+
+          {snapshot && snapshot.escalated.length > 0 ? (
+            <div className={styles.escalation} role="status">
+              <Icon name="bell" size={16} />
+              <span>
+                <strong>
+                  {snapshot.escalated.length} request
+                  {snapshot.escalated.length === 1 ? '' : 's'} need allocating.
+                </strong>{' '}
+                Nobody accepted these within the offer window. They are pinned to the
+                top of Pending Requests.
+              </span>
+            </div>
+          ) : undefined}
+
+          <div className={styles.grid}>
+            {counters ? (
+              <div
+                className={styles.counters}
+                role="group"
+                aria-label="Dispatch counters. Each one filters the grids below."
+              >
+                {counterCards.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    className={[styles.stat, c.tone, activeCounter === c.key ? styles.statActive : ''].join(' ')}
+                    onClick={c.onClick}
+                    aria-pressed={activeCounter === c.key}
+                    aria-label={`${c.label}: ${c.value}. Show these.`}
+                    title={c.meta}
+                  >
+                    <span className={styles.statIcon} aria-hidden="true">
+                      <Icon name={c.icon} size={24} />
+                    </span>
+                    <span className={styles.statText}>
+                      <span className={styles.statValue}>{c.value}</span>
+                      <span className={styles.statLabel}>{c.label}</span>
+                    </span>
+                    <span className={styles.statChevron} aria-hidden="true">
+                      <Icon name="chevronRight" size={16} />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : undefined}
+
+            {!pendingFocused && !availFocused ? (
+              <Box
+                title="Ongoing Trips"
+                className={[styles.ongoing, ongoingFocused ? styles.wideLeft : ''].join(' ')}
+                action={<ViewAll open={ongoingFocused} onClick={() => toggle('ongoing')} />}
+              >
+                <DataGrid
+                  caption="Ongoing trips, soonest required time first"
+                  captionVisuallyHidden
+                  columns={ongoingColumns}
+                  rows={visibleTrips}
+                  rowKey={(c) => c.trip.id}
+                  emptyMessage="No trips are under way."
+                />
+              </Box>
+            ) : undefined}
+
+            {!ongoingFocused && !availFocused ? (
+              <Box
+                title="Pending Requests"
+                className={[styles.pending, pendingFocused ? styles.wideLeft : ''].join(' ')}
+                action={<ViewAll open={pendingFocused} onClick={() => toggle('pending')} />}
+              >
+                <DataGrid
+                  caption="Pending requests, oldest first, with escalations pinned to the top"
+                  captionVisuallyHidden
+                  columns={pendingColumns}
+                  rows={visibleRequests}
+                  rowKey={(r) => r.id}
+                  isPinned={(r) => r.status === 'Awaiting Coordinator'}
+                  emptyMessage="Nothing is waiting to be allocated."
+                />
+              </Box>
+            ) : undefined}
+
+            <Box
+              title="Vehicles & Drivers Availability"
+              className={[styles.availability, availFocused ? styles.wideAll : ''].join(' ')}
+              action={
+                <ViewAll
+                  open={availFocused}
+                  onClick={() => (tab === 'drivers' ? showDrivers() : showVehicles())}
+                />
+              }
+            >
+              <div className={styles.tabs} role="tablist" aria-label="Availability">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === 'drivers'}
+                  className={[styles.tab, tab === 'drivers' ? styles.tabActive : ''].join(' ')}
+                  onClick={() => setTab('drivers')}
+                >
+                  Drivers
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === 'vehicles'}
+                  className={[styles.tab, tab === 'vehicles' ? styles.tabActive : ''].join(' ')}
+                  onClick={() => setTab('vehicles')}
+                >
+                  Vehicles
+                </button>
+              </div>
+
+              {tab === 'drivers' ? (
+                <DataGrid
+                  caption="Driver availability"
+                  captionVisuallyHidden
+                  columns={driverColumns}
+                  rows={snapshot?.drivers ?? []}
+                  rowKey={(d) => d.id}
+                  emptyMessage="No drivers are set up."
+                />
+              ) : (
+                <DataGrid
+                  caption="Vehicle availability"
+                  captionVisuallyHidden
+                  columns={vehicleColumns}
+                  rows={snapshot?.vehicles ?? []}
+                  rowKey={(v) => v.id}
+                  emptyMessage="No vehicles are set up."
+                />
+              )}
+
+              <span className={styles.staleNote}>
+                Driver and vehicle status is maintained by the dispatch flows. If a
+                status here looks wrong, it was probably edited by hand in the list -
+                the nightly reconciliation will correct it.
+              </span>
+            </Box>
+          </div>
+        </div>
+      </div>
+
+      {snapshot ? (
+        <section className={styles.steps} ref={stepsRef} aria-label="Allocate driver and vehicle">
+          <header className={styles.stepsBar}>
+            <Icon name="gear" size={22} />
+            <h2 className={styles.stepsTitle}>Allocate Driver &amp; Vehicle (Steps)</h2>
+          </header>
+          <AllocationSteps
+            key={assignTarget?.id ?? 'none'}
+            request={assignTarget}
+            pending={allPending}
+            snapshot={snapshot}
+            offers={offersForTarget}
+            busy={busy}
+            lastAllocated={lastAllocated}
+            onPick={(r) => {
+              openAssign(r).catch(() => undefined);
+            }}
+            onClose={() => setAssignTarget(undefined)}
+            onAssign={doAssign}
+          />
+        </section>
+      ) : undefined}
 
       <ConfirmDialog
         open={rejectTarget !== undefined}
@@ -714,7 +1100,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
 
       <ConfirmDialog
         open={cancelTarget !== undefined}
-        title="Cancel this request?"
+        title={cancelTarget?.status === 'Allocated' ? 'Cancel this trip?' : 'Cancel this request?'}
         message={`Request ${cancelTarget?.requestId ?? ''} will be cancelled.`}
         consequences={[
           'The requester is notified with the reason.',
@@ -732,32 +1118,33 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
         }}
         onCancel={() => setCancelTarget(undefined)}
       />
-    </PageShell>
+    </div>
   );
 };
 
-function CounterRow({ children }: { children: React.ReactNode }): JSX.Element {
-  return <div className={styles.counterRow}>{children}</div>;
-}
-
 // -----------------------------------------------------------------------------
-// Manual assignment
+// Manual assignment, as six steps
 // -----------------------------------------------------------------------------
 
 /**
  * The Coordinator can assign or reassign AT ANY TIME, regardless of the
  * allocation mode.
  *
- * The panel permits an OUT-OF-POLICY choice - a driver already at their cap,
- * or a vehicle of a different type - with a mandatory override reason. It
- * shows the eligibility verdict so the Coordinator knows they are overriding
+ * The steps permit an OUT-OF-POLICY choice - a driver already at their cap,
+ * or a vehicle of a different type - with a mandatory override reason. They
+ * show the eligibility verdict so the Coordinator knows they are overriding
  * rather than discovering it afterwards.
  */
-function AssignmentPanel({ request, snapshot, offers, busy, onClose, onAssign }: {
-  request: ITransportRequest;
+function AllocationSteps({
+  request, pending, snapshot, offers, busy, lastAllocated, onPick, onClose, onAssign,
+}: {
+  request?: ITransportRequest;
+  pending: ITransportRequest[];
   snapshot: IDispatchSnapshot;
   offers: IRideOffer[];
   busy: boolean;
+  lastAllocated?: ILastAllocated;
+  onPick: (request: ITransportRequest) => void;
   onClose: () => void;
   onAssign: (
     driverId: number,
@@ -767,19 +1154,20 @@ function AssignmentPanel({ request, snapshot, offers, busy, onClose, onAssign }:
   ) => Promise<void>;
 }): JSX.Element {
   /**
-   * ONE CHOICE, NOT TWO.
+   * ONE PAIR, TWO WAYS IN.
    *
    * The pairing is permanent: a driver owns a vehicle, recorded on
-   * VehicleMaster.DefaultDriver. Offering the Coordinator separate driver and
-   * vehicle lists would let them pair driver A with vehicle B and quietly
-   * break the invariant the whole engine now rests on. So the panel lists
-   * PAIRS, and picking one sets both.
+   * VehicleMaster.DefaultDriver. Two independent lists would let the
+   * Coordinator pair driver A with vehicle B and quietly break the invariant
+   * the whole engine rests on. So step 2 and step 3 both choose the SAME
+   * pair: picking a vehicle brings its driver, and picking a driver brings
+   * that driver's best vehicle for this request.
    */
   const [vehicleId, setVehicleId] = React.useState<number | undefined>();
   const [reason, setReason] = React.useState('');
 
-  const windowFrom = request.requiredDateTime;
-  const windowTo = request.returnDateTime
+  const windowFrom = request?.requiredDateTime ?? new Date();
+  const windowTo = request?.returnDateTime
     ? request.returnDateTime
     : new Date(windowFrom.getTime() + 2 * 3600000);
 
@@ -808,161 +1196,369 @@ function AssignmentPanel({ request, snapshot, offers, busy, onClose, onAssign }:
     [driversById, openTrips, windowTo],
   );
 
+  const requestedTypeId = request?.vehicleTypeRequested?.id;
+
   /** Every vehicle with its permanent driver, and why it may not be usable. */
   const candidates = React.useMemo(
     () =>
-      snapshot.vehicles.map((v) => ({
-        vehicle: v,
-        driver: driversById.get(v.defaultDriver?.id ?? -1),
-        problems: explainPairIneligibility(v, ctx),
-      })),
-    [snapshot.vehicles, driversById, ctx],
+      snapshot.vehicles.map((v) => {
+        const problems = explainPairIneligibility(v, ctx).slice();
+        if (requestedTypeId !== undefined && v.vehicleType?.id !== requestedTypeId) {
+          problems.push(`different vehicle type (${v.vehicleType?.title ?? 'none'})`);
+        }
+        return { vehicle: v, driver: driversById.get(v.defaultDriver?.id ?? -1), problems };
+      }),
+    [snapshot.vehicles, driversById, ctx, requestedTypeId],
   );
 
-  const requestedTypeId = request.vehicleTypeRequested?.id;
   const chosen = candidates.filter((c) => c.vehicle.id === vehicleId)[0];
 
-  const wrongType =
-    chosen !== undefined &&
-    requestedTypeId !== undefined &&
-    chosen.vehicle.vehicleType?.id !== requestedTypeId;
-
-  const isOverride = chosen !== undefined && (chosen.problems.length > 0 || wrongType);
+  const isOverride = chosen !== undefined && chosen.problems.length > 0;
   const driverId = chosen?.driver?.id;
   const canAssign =
+    request !== undefined &&
     chosen !== undefined &&
     driverId !== undefined &&
     (!isOverride || reason.trim().length > 0);
 
   const declined = offers.filter((o) => o.responseStatus === 'Rejected');
 
-  return (
-    <div className={styles.assignPanel}>
-      <div className={styles.assignHead}>
-        <div>
-          <SectionHeading>Assign {request.requestId}</SectionHeading>
-          <span className={styles.choiceMeta}>
-            {request.pickupText} &rarr; {request.dropOffText}{' '}
-            &middot; {formatDateTime(request.requiredDateTime)} &middot;{' '}
-            {request.vehicleTypeRequested?.title}
-            {request.otherVehicleText ? ` (${request.otherVehicleText})` : ''}
-          </span>
-        </div>
-        <Button kind="secondary" onClick={onClose}>
-          Close
-        </Button>
-      </div>
+  /** A driver's best vehicle for this request: suitable first, then any. */
+  const vehicleForDriver = (id: number): number | undefined => {
+    const own = candidates.filter((c) => c.driver?.id === id);
+    const best = own.filter((c) => c.problems.length === 0)[0] ?? own[0];
+    return best?.vehicle.id;
+  };
 
-      {request.status === 'Awaiting Coordinator' ? (
-        <Notice tone="attention">
-          The offer window closed with nobody accepting.
-          {declined.length > 0 ? (
-            <ul className={styles.declinedList}>
-              {declined.map((o) => (
-                <li key={o.id}>
-                  {o.driver?.title ?? 'A driver'} declined:{' '}
-                  {o.rejectionReason ?? 'no reason given'}
-                  {o.rejectionNotes ? ` — ${o.rejectionNotes}` : ''}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className={styles.declinedList}>
-              {offers.length === 0
-                ? 'No drivers were eligible for this request.'
-                : `${offers.length} driver(s) were offered it and none responded.`}
-            </div>
-          )}
-        </Notice>
-      ) : undefined}
-
-      <div className={styles.assignGrid}>
-        <div>
-          <FormRow label="Driver and vehicle" required>
-            <div className={styles.choiceList} role="listbox" aria-label="Driver and vehicle pairs">
-              {candidates.map((c) => {
-                const label = c.driver
-                  ? `${c.driver.driverName} \u2014 ${c.vehicle.plateNo}`
-                  : `${c.vehicle.plateNo} \u2014 no assigned driver`;
-                const notes: string[] = c.problems.slice();
-                if (
-                  requestedTypeId !== undefined &&
-                  c.vehicle.vehicleType?.id !== requestedTypeId
-                ) {
-                  notes.push(`different vehicle type (${c.vehicle.vehicleType?.title ?? 'none'})`);
-                }
-                return (
-                  <button
-                    key={c.vehicle.id}
-                    type="button"
-                    role="option"
-                    aria-selected={vehicleId === c.vehicle.id}
-                    disabled={!c.driver}
-                    className={[
-                      styles.choice,
-                      vehicleId === c.vehicle.id ? styles.choiceSelected : '',
-                    ].join(' ')}
-                    onClick={() => setVehicleId(c.vehicle.id)}
-                  >
-                    <span>
-                      {label}
-                      <span className={styles.choiceMeta}>
-                        {notes.length === 0 ? ' \u00B7 eligible' : ` \u00B7 ${notes.join('; ')}`}
-                      </span>
-                    </span>
-                    <Badge state={vehicleState(c.vehicle.status)} label={c.vehicle.status} />
-                  </button>
-                );
-              })}
-            </div>
-          </FormRow>
-        </div>
-      </div>
-
-      {isOverride ? (
-        <div className={styles.escalationNote}>
-          <Notice tone="attention">
-            This is an out-of-policy assignment. A reason is required and is
-            recorded on the trip.
-          </Notice>
-          <FormRow label="Override reason" required>
-            <TextField
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Why this driver or vehicle despite the rule"
-            />
-          </FormRow>
-        </div>
-      ) : undefined}
-
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-        <Button kind="secondary" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-        <Button
-          kind="primary"
-          disabled={!canAssign || busy}
-          onClick={() => {
-            if (driverId !== undefined && vehicleId !== undefined) {
-              onAssign(
-                driverId,
-                vehicleId,
-                isOverride,
-                isOverride ? reason.trim() : undefined,
-              ).catch(() => undefined);
-            }
-          }}
-        >
-          {busy ? 'Assigning…' : 'Assign'}
-        </Button>
-      </div>
-
-      <span className={styles.staleNote}>
-        Assigning manually skips the broadcast. Any open offers for this request
-        are withdrawn, and the chosen driver is notified directly rather than
-        being offered a choice.
+  const vehicleLine = (v: IVehicle, extra?: React.ReactNode): JSX.Element => (
+    <span className={styles.pickRow}>
+      <span className={styles.carThumb} aria-hidden="true">
+        <Icon name="car" size={22} />
       </span>
-    </div>
+      <span className={styles.pickText}>
+        <strong>{vehicleName(v)}</strong>
+        <span>{`Plate: ${v.plateNo}`}</span>
+        {extra}
+      </span>
+    </span>
+  );
+
+  const trackedTrip = lastAllocated
+    ? snapshot.ongoingTrips.filter((t) => t.request.id === lastAllocated.requestItemId)[0]
+    : undefined;
+  const trackedStatus = trackedTrip?.trip.tripStatus;
+
+  const step = (n: number, title: string, caption: string, body: React.ReactNode, done = false): JSX.Element => (
+    <li className={[styles.step, done ? styles.stepDone : ''].join(' ')}>
+      <span className={styles.stepNumber} aria-hidden="true">
+        {n}
+      </span>
+      <div className={styles.stepHead}>
+        <span className={styles.stepTitle}>
+          <span className={styles.srOnly}>{`Step ${n}: `}</span>
+          {title}
+        </span>
+        <span className={styles.stepCaption}>{caption}</span>
+      </div>
+      <div className={styles.stepBody}>{body}</div>
+    </li>
+  );
+
+  return (
+    <ol className={styles.stepList}>
+      {step(
+        1,
+        'Select Request',
+        'Click on a pending request from the list.',
+        <>
+          <Dropdown
+            label="Request to allocate"
+            placeholder="Choose a pending request"
+            value={
+              request ? (
+                <span className={styles.pickRow}>
+                  <span className={styles.docThumb} aria-hidden="true">
+                    <Icon name="doc" size={20} />
+                  </span>
+                  <span className={styles.pickText}>
+                    <strong>
+                      {request.requestId}{' '}
+                      <span className={styles.pickWhen}>{when(request.requiredDateTime)}</span>
+                    </strong>
+                    <span>{`${SHORT_TYPE[request.requestType] ?? request.requestType} Request`}</span>
+                    <span>{request.vehicleTypeRequested?.title ?? '—'}</span>
+                  </span>
+                </span>
+              ) : undefined
+            }
+            options={pending.map((p) => ({
+              key: p.id,
+              selected: request?.id === p.id,
+              content: (
+                <span className={styles.pickText}>
+                  <strong>
+                    {p.requestId} <span className={styles.pickWhen}>{when(p.requiredDateTime)}</span>
+                  </strong>
+                  <span>
+                    {`${SHORT_TYPE[p.requestType] ?? p.requestType} · ${p.vehicleTypeRequested?.title ?? '—'}`}
+                  </span>
+                  <span className={styles.subLine}>{p.status}</span>
+                </span>
+              ),
+            }))}
+            onPick={(id) => {
+              const r = pending.filter((p) => p.id === id)[0];
+              if (r) onPick(r);
+            }}
+          />
+          {request ? (
+            <span className={styles.subLine}>
+              {request.pickupText} &rarr; {request.dropOffText}
+              {request.otherVehicleText ? ` · ${request.otherVehicleText}` : ''}
+            </span>
+          ) : undefined}
+          {request && request.status === 'Awaiting Coordinator' ? (
+            <div className={styles.declined}>
+              The offer window closed with nobody accepting.
+              {declined.length > 0 ? (
+                <ul>
+                  {declined.map((o) => (
+                    <li key={o.id}>
+                      {o.driver?.title ?? 'A driver'} declined:{' '}
+                      {o.rejectionReason ?? 'no reason given'}
+                      {o.rejectionNotes ? ` — ${o.rejectionNotes}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div>
+                  {offers.length === 0
+                    ? 'No drivers were eligible for this request.'
+                    : `${offers.length} driver(s) were offered it and none responded.`}
+                </div>
+              )}
+            </div>
+          ) : undefined}
+        </>,
+        request !== undefined,
+      )}
+
+      {step(
+        2,
+        'Choose Vehicle',
+        'Select an available vehicle based on the required type.',
+        <Dropdown
+          label="Vehicle"
+          placeholder={request ? 'Choose a vehicle' : 'Select a request first'}
+          disabled={!request}
+          value={
+            chosen
+              ? vehicleLine(
+                  chosen.vehicle,
+                  <Pill state={vehicleState(chosen.vehicle.status)} label={chosen.vehicle.status} />,
+                )
+              : undefined
+          }
+          options={candidates.map((c) => ({
+            key: c.vehicle.id,
+            selected: c.vehicle.id === vehicleId,
+            disabled: !c.driver,
+            content: vehicleLine(
+              c.vehicle,
+              <span className={c.problems.length === 0 ? styles.ok : styles.warn}>
+                {c.problems.length === 0
+                  ? `Eligible · ${c.vehicle.status}`
+                  : c.problems.join('; ')}
+              </span>,
+            ),
+          }))}
+          onPick={(id) => setVehicleId(id)}
+        />,
+        chosen !== undefined,
+      )}
+
+      {step(
+        3,
+        'Choose Driver',
+        'Select an available driver based on schedule and location.',
+        <Dropdown
+          label="Driver"
+          placeholder={request ? 'Choose a driver' : 'Select a request first'}
+          disabled={!request}
+          value={
+            chosen && chosen.driver ? (
+              <span className={styles.pickRow}>
+                <Avatar name={chosen.driver.driverName} large />
+                <span className={styles.pickText}>
+                  <strong>{chosen.driver.driverName}</strong>
+                  <Pill state={driverState(chosen.driver.status)} label={chosen.driver.status} />
+                </span>
+              </span>
+            ) : undefined
+          }
+          options={snapshot.drivers.map((d) => {
+            const vid = vehicleForDriver(d.id);
+            const v = vid !== undefined ? candidates.filter((c) => c.vehicle.id === vid)[0] : undefined;
+            return {
+              key: d.id,
+              selected: chosen?.driver?.id === d.id,
+              disabled: vid === undefined,
+              content: (
+                <span className={styles.pickRow}>
+                  <Avatar name={d.driverName} />
+                  <span className={styles.pickText}>
+                    <strong>{d.driverName}</strong>
+                    <span className={v && v.problems.length === 0 ? styles.ok : styles.warn}>
+                      {v ? `${d.status} · ${v.vehicle.plateNo}` : 'No vehicle assigned'}
+                    </span>
+                  </span>
+                </span>
+              ),
+            };
+          })}
+          onPick={(id) => setVehicleId(vehicleForDriver(id))}
+        />,
+        chosen !== undefined && chosen.driver !== undefined,
+      )}
+
+      {step(
+        4,
+        'Confirm Allocation',
+        'Review trip details and confirm the allocation.',
+        <>
+          <div className={styles.confirmCard}>
+            <span className={styles.pickRow}>
+              <span className={styles.carThumb} aria-hidden="true">
+                <Icon name="car" size={18} />
+              </span>
+              <span className={styles.pickText}>
+                <strong>Vehicle: {chosen ? vehicleName(chosen.vehicle) : '—'}</strong>
+                <span>{chosen ? `Plate: ${chosen.vehicle.plateNo}` : 'Not chosen yet'}</span>
+              </span>
+            </span>
+            <span className={styles.pickRow}>
+              <Avatar name={chosen?.driver?.driverName ?? '?'} />
+              <span className={styles.pickText}>
+                <strong>Driver: {chosen?.driver?.driverName ?? '—'}</strong>
+              </span>
+            </span>
+          </div>
+
+          {isOverride ? (
+            <div className={styles.override}>
+              <span className={styles.warn}>
+                Out-of-policy assignment: {chosen?.problems.join('; ')}. A reason is
+                required and is recorded on the trip.
+              </span>
+              <FormRow label="Override reason" required>
+                <TextField
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Why this driver or vehicle despite the rule"
+                />
+              </FormRow>
+            </div>
+          ) : undefined}
+
+          <Button
+            kind="primary"
+            className={styles.allocateButton}
+            disabled={!canAssign || busy}
+            onClick={() => {
+              if (driverId !== undefined && vehicleId !== undefined) {
+                onAssign(driverId, vehicleId, isOverride, isOverride ? reason.trim() : undefined).catch(
+                  () => undefined,
+                );
+              }
+            }}
+          >
+            {busy ? 'Allocating…' : 'Allocate'}
+            {busy ? undefined : <Icon name="chevronRight" size={18} />}
+          </Button>
+          {request ? (
+            <button type="button" className={styles.textButton} onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+          ) : undefined}
+        </>,
+      )}
+
+      {step(
+        5,
+        'Notify Driver & Requester',
+        'The driver and the requester are told about the allocation.',
+        <div className={styles.notifyList}>
+          {[
+            {
+              who: 'Driver',
+              name: lastAllocated && !request ? lastAllocated.driverName : chosen?.driver?.driverName,
+              done: 'Task Assigned',
+            },
+            { who: 'Requester', name: undefined, done: 'Confirmation Queued' },
+          ].map((row) => {
+            const sent = lastAllocated !== undefined && !request;
+            return (
+              <div key={row.who} className={[styles.notifyRow, sent ? styles.notifyDone : ''].join(' ')}>
+                {row.name ? (
+                  <Avatar name={row.name} />
+                ) : (
+                  <span className={styles.avatar} aria-hidden="true">
+                    <Icon name="user" size={15} />
+                  </span>
+                )}
+                <span className={styles.notifyWho}>{row.who}</span>
+                <span className={styles.notifyState}>
+                  <span className={styles.notifyTick} aria-hidden="true">
+                    <Icon name={sent ? 'check' : 'clock'} size={12} />
+                  </span>
+                  {sent ? row.done : 'Waiting'}
+                </span>
+              </div>
+            );
+          })}
+          {lastAllocated && !request ? (
+            <span className={styles.subLine}>
+              {`${lastAllocated.requestId} allocated to ${lastAllocated.driverName} (${lastAllocated.vehicleName}). ` +
+                'The requester’s e-mail is sent by the notification flow.'}
+            </span>
+          ) : undefined}
+        </div>,
+        lastAllocated !== undefined && !request,
+      )}
+
+      {step(
+        6,
+        'Track & Manage',
+        'Monitor the trip status. The driver updates it as the trip goes.',
+        <>
+          <div className={styles.flow}>
+            {[
+              { label: 'En Route', icon: 'pin' as IconName, tone: styles.flowGreen },
+              { label: 'In Transit', icon: 'car' as IconName, tone: styles.flowBlue },
+              { label: 'Completed', icon: 'check' as IconName, tone: styles.flowGreen },
+              { label: 'Cancelled', icon: 'x' as IconName, tone: styles.flowRed },
+            ].map((f, i) => (
+              <React.Fragment key={f.label}>
+                {i > 0 ? <span className={styles.flowArrow} aria-hidden="true" /> : undefined}
+                <span className={[styles.flowStep, trackedStatus === f.label ? styles.flowNow : ''].join(' ')}>
+                  <span className={[styles.flowDot, f.tone].join(' ')} aria-hidden="true">
+                    <Icon name={f.icon} size={16} />
+                  </span>
+                  {f.label}
+                </span>
+              </React.Fragment>
+            ))}
+          </div>
+          {lastAllocated ? (
+            <span className={styles.subLine}>
+              {trackedStatus
+                ? `${lastAllocated.requestId} is ${trackedStatus}. This updates on every refresh.`
+                : `${lastAllocated.requestId} is assigned - waiting for the driver to set off.`}
+            </span>
+          ) : undefined}
+        </>,
+      )}
+    </ol>
   );
 }
 

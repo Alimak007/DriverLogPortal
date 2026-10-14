@@ -1,71 +1,190 @@
 @import '../../../common/styles/tokens';
 
-.filterBar {
-  @include panel;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: $gap-md;
-  align-items: end;
-  margin-bottom: $gap-lg;
+// =============================================================================
+// Fleet Reports
+// =============================================================================
+// The same parts as Book a Ride: brown-headed cards, white option tiles that
+// turn peach with a tick when chosen, and a full-width primary action. Filters
+// and the report list sit side by side on a desktop and stack on a tablet or
+// phone; the results card always runs the full width.
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.filterActions {
-  display: flex;
-  gap: $gap-sm;
-  align-items: end;
-  flex-wrap: wrap;
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $gap-lg;
+  margin-bottom: $gap-lg;
+
+  @media (min-width: 1100px) {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: start;
+  }
 }
+
+// -----------------------------------------------------------------------------
+// Filters
+// -----------------------------------------------------------------------------
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: $gap-md;
+
+  // The two dates share a row; everything else runs full width.
+  > :nth-child(n + 3) { grid-column: 1 / -1; }
+
+  @media (min-width: 700px) and (max-width: 1099px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+    > :nth-child(n + 3) { grid-column: auto; }
+  }
+
+  @media (max-width: $bp-min) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.runButton {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 12px;
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: $weight-heading;
+}
+
+// -----------------------------------------------------------------------------
+// Report tiles
+// -----------------------------------------------------------------------------
 
 .reportList {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: $gap-sm;
-  margin-bottom: $gap-lg;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  @media (max-width: $bp-mobile) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-.reportButton {
+.reportTile {
   @include focus-ring;
-  font-family: $font-heading;
-  font-size: $size-button;
-  font-weight: $weight-button;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: $gap-md;
+  min-height: 64px;
+  padding: 10px 34px 10px 10px;
   text-align: left;
-  background: $brand-light;
-  color: $brand-dark;
+  background: $white;
   border: 1px solid $border;
-  border-radius: $radius-toolbar;
-  padding: 11px 14px;
+  border-radius: $radius-card;
+  box-shadow: 0 1px 3px rgba(55, 35, 25, 0.06);
+  font-family: $font-body;
+  color: $brand-dark;
   cursor: pointer;
-  transition: background-color $transition, color $transition;
+  transition: background-color $transition, border-color $transition, box-shadow $transition;
 
   &:hover { background: $brand-row-alt; }
 }
 
-.reportButtonActive {
-  background: $brand-dark;
-  color: $brand-light;
+// Chosen: peach with a brown edge AND a tick, as on the booking screens.
+.reportTileActive {
+  background: $brand-tint;
   border-color: $brand-dark;
+  box-shadow: inset 0 0 0 1px $brand-dark;
 
-  &:hover { background: $brand-hover; }
+  &:hover { background: $brand-tint; }
+
+  .reportIcon { background: $white; }
+}
+
+.reportIcon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: $radius-field;
+  background: $brand-mid;
+  color: $brand-dark;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reportText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reportTitle {
+  font-family: $font-heading;
+  font-size: $size-table-cell;
+  font-weight: $weight-heading;
+  line-height: 1.3;
 }
 
 .restrictedMark {
-  display: block;
-  font-family: $font-body;
-  font-size: $size-hint;
-  font-weight: $weight-body;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 1.3;
   color: $muted;
-  margin-top: 2px;
 }
 
-.reportButtonActive .restrictedMark { color: $brand-light; }
+.checkMark {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  border-radius: $radius-badge;
+  background: $brand-dark;
+  color: $white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 
-.resultHead {
+// -----------------------------------------------------------------------------
+// Results
+// -----------------------------------------------------------------------------
+
+.resultMeta {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: $gap-md;
+  gap: $gap-sm;
   flex-wrap: wrap;
   margin-bottom: $gap-md;
 }
 
-.generated { @include caption; }
+.metaPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: $radius-badge;
+  background: $white;
+  border: 1px solid $border;
+  font-family: $font-body;
+  font-size: $size-hint;
+  font-weight: $weight-caption;
+  color: $brand-dark;
+}
+
+// Grid items must be allowed to shrink below their content.
+.filtersCard,
+.reportsCard { min-width: 0; }
