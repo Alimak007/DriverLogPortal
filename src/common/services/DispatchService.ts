@@ -47,7 +47,11 @@ import {
   isOutsideOperatingArea,
 } from '../rules/dispatchRules';
 import { formatRequestRef, formatTripRef } from '../rules/identifiers';
-import { OPEN_TRIP_STATUSES, PENDING_STATUSES } from '../rules/statusTransitions';
+import {
+  odometerPromptFor,
+  OPEN_TRIP_STATUSES,
+  PENDING_STATUSES,
+} from '../rules/statusTransitions';
 import { toIso } from '../utils/dates';
 import {
   EXPAND_DRIVER,
@@ -156,6 +160,13 @@ export interface INewRequestInput {
   dropOffLng: number;
   dropOffNotes?: string;
 
+  /**
+   * Planned road distance and time from the Routes API, read on the booking
+   * form. Both optional: Google being unreachable must not stop a booking.
+   */
+  estimatedDistanceKm?: number;
+  estimatedDurationMinutes?: number;
+
   requiredDateTime: Date;
   returnDateTime?: Date;
   noOfPax?: number;
@@ -226,6 +237,27 @@ export interface IDispatchService {
 }
 
 // -----------------------------------------------------------------------------
+
+/**
+ * The planned-route columns to copy from a request row onto a new trip.
+ *
+ * Returns an object to spread, so an absent estimate contributes NOTHING to
+ * the payload rather than writing an explicit null. SharePoint treats a null
+ * on a Number column as a value, and a trip that was allocated before the
+ * estimate existed should read as empty, not as zero kilometres.
+ */
+function estimateFields(
+  raw: { EstimatedDistanceKm?: number; EstimatedDurationMinutes?: number } | undefined,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (raw?.EstimatedDistanceKm !== undefined && raw.EstimatedDistanceKm !== null) {
+    out.EstimatedDistanceKm = raw.EstimatedDistanceKm;
+  }
+  if (raw?.EstimatedDurationMinutes !== undefined && raw.EstimatedDurationMinutes !== null) {
+    out.EstimatedDurationMinutes = raw.EstimatedDurationMinutes;
+  }
+  return out;
+}
 
 function orFilter(field: string, values: (string | number)[]): string {
   if (values.length === 0) return '';
@@ -307,6 +339,15 @@ export class DispatchService implements IDispatchService {
       if (input.itemDescription) payload.ItemDescription = input.itemDescription;
       if (input.itemNotes) payload.ItemNotes = input.itemNotes;
       if (input.remarks) payload.Remarks = input.remarks;
+      // Written only when Google answered. An absent estimate is normal, so
+      // these stay optional end to end - a routing outage must not block a
+      // booking.
+      if (input.estimatedDistanceKm !== undefined) {
+        payload.EstimatedDistanceKm = input.estimatedDistanceKm;
+      }
+      if (input.estimatedDurationMinutes !== undefined) {
+        payload.EstimatedDurationMinutes = input.estimatedDurationMinutes;
+      }
 
       const added: any = await list.items.add(payload);
       const itemId: number = added?.Id ?? added?.data?.Id;
@@ -731,6 +772,15 @@ export class DispatchService implements IDispatchService {
     const sp = getSP();
     const now = toIso(new Date());
 
+    // The planned route, copied onto the trip. Read here rather than threaded
+    // down from acceptOffer: this runs AFTER the ETag race is settled, so an
+    // extra short read costs nothing anyone is competing for.
+    const estimate: any = await sp.web.lists
+      .getByTitle(LIST.transportRequests)
+      .items.getById(requestItemId)
+      .select('EstimatedDistanceKm', 'EstimatedDurationMinutes')()
+      .catch(() => undefined);
+
     const tripList = sp.web.lists.getByTitle(LIST.tripAssignments);
     const added: any = await tripList.items.add({
       Title: 'NEW',
@@ -741,6 +791,7 @@ export class DispatchService implements IDispatchService {
       TripStatus: TRIP_STATUS.Assigned,
       AllocationMode: 'Automatic',
       IsOverride: false,
+      ...estimateFields(estimate),
     });
     const tripItemId: number = added?.Id ?? added?.data?.Id;
 
@@ -838,8 +889,16 @@ export class DispatchService implements IDispatchService {
       const sp = getSP();
       const list = sp.web.lists.getByTitle(LIST.tripAssignments);
 
-      const raw: any = await list.items.getById(tripItemId).select('Id', 'TripStatus')();
+      // OpeningReading comes along because the odometer rule below depends on
+      // whether this trip already has one.
+      const raw: any = await list.items
+        .getById(tripItemId)
+        .select('Id', 'TripStatus', 'OpeningReading')();
       const fromStatus: TripStatus = raw.TripStatus;
+      const openingReading: number | undefined =
+        raw.OpeningReading === null || raw.OpeningReading === undefined
+          ? undefined
+          : Number(raw.OpeningReading);
 
       if (!isLegalTransition(fromStatus, toStatus)) {
         return fail(
@@ -848,10 +907,36 @@ export class DispatchService implements IDispatchService {
         );
       }
 
-      const needsOdometer = toStatus === TRIP_STATUS.EnRoute || toStatus === TRIP_STATUS.Completed;
-      if (needsOdometer && (odometer === undefined || isNaN(odometer))) {
-        const which = toStatus === TRIP_STATUS.EnRoute ? 'opening' : 'closing';
-        return fail('UNKNOWN', `The ${which} odometer reading is required for this step.`);
+      /**
+       * ALL OR NOTHING, enforced here as well as in the driver form.
+       *
+       * The same rule the form uses, from the same pure function - so the two
+       * cannot drift. The form hiding a field is not the control; this is.
+       *
+       * Opening may be skipped. Closing is required ONLY when an opening
+       * reading exists, because half a pair yields no distance.
+       */
+      const given = odometer !== undefined && !isNaN(odometer);
+      const prompt = odometerPromptFor(toStatus, openingReading !== undefined);
+
+      if (prompt?.required && !given) {
+        return fail(
+          'UNKNOWN',
+          'This trip has an opening odometer reading, so the closing reading is ' +
+            'needed to complete it.',
+        );
+      }
+
+      if (
+        prompt?.field === 'closing' &&
+        given &&
+        openingReading !== undefined &&
+        (odometer as number) <= openingReading
+      ) {
+        return fail(
+          'UNKNOWN',
+          `The closing reading must be higher than the opening one (${openingReading}).`,
+        );
       }
 
       const now = toIso(new Date());
@@ -859,12 +944,17 @@ export class DispatchService implements IDispatchService {
 
       if (toStatus === TRIP_STATUS.EnRoute) {
         values.ActualStartTime = now;
-        values.OpeningReading = odometer;
+        // Only when actually supplied. Assigning undefined would send a null
+        // and write an empty value over a column that should stay untouched.
+        if (given) values.OpeningReading = odometer;
       } else if (toStatus === TRIP_STATUS.InTransit) {
         values.ActualPickupTime = now;
       } else if (toStatus === TRIP_STATUS.Completed) {
         values.ActualDropTime = now;
-        values.ClosingReading = odometer;
+        // A closing reading is only meaningful against an opening one. If the
+        // driver skipped the opening, anything sent here is discarded rather
+        // than stored as an orphan the trip sheet cannot use.
+        if (prompt?.field === 'closing' && given) values.ClosingReading = odometer;
       }
 
       await list.items.getById(tripItemId).update(values);
@@ -905,7 +995,9 @@ export class DispatchService implements IDispatchService {
 
       const raw: any = await requestList.items
         .getById(requestItemId)
-        .select('Id', 'ReqStatus')();
+        // The two estimate columns ride along on a read this already makes,
+        // so copying them onto the trip costs no extra round trip here.
+        .select('Id', 'ReqStatus', 'EstimatedDistanceKm', 'EstimatedDurationMinutes')();
 
       if (PENDING_STATUSES.indexOf(raw.ReqStatus) === -1 && raw.ReqStatus !== REQUEST_STATUS.Held) {
         return fail('ALREADY_ALLOCATED', 'This request has already been allocated.');
@@ -928,6 +1020,7 @@ export class DispatchService implements IDispatchService {
         AllocatedById: this.ctx.pageContext.legacyPageContext.userId,
         IsOverride: isOverride,
         OverrideReason: overrideReason,
+        ...estimateFields(raw),
       });
       const tripItemId: number = added?.Id ?? added?.data?.Id;
 

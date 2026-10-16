@@ -96,25 +96,57 @@
   min-width: 0;
 }
 
+// Shown in place of a web part the user may not open. Quiet on purpose - this
+// is a signpost, not a failure, and it should not look like one.
+.accessNotice {
+  background: $brand-light;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  padding: 22px 24px;
+  max-width: 620px;
+}
+
+.accessTitle {
+  font-family: $font-heading;
+  font-size: $size-section-heading;
+  font-weight: $weight-heading;
+  color: $brand-dark;
+  margin-bottom: 10px;
+}
+
+.accessBody {
+  margin: 0 0 8px;
+  font-family: $font-body;
+  font-size: $size-table-cell;
+  color: $muted;
+
+  strong { color: $brand-dark; font-weight: 700; }
+
+  &:last-child { margin-bottom: 0; }
+}
+
 .headedCardHeader {
   display: flex;
   align-items: center;
   gap: $gap-md;
   flex-wrap: wrap;
-  min-height: 56px;
+  // Sized around the 15px title. Shrinking the text alone would leave it
+  // floating in a bar built for 18px, which reads as a mistake rather than a
+  // smaller heading.
+  min-height: 46px;
   background: $brand-dark;
   color: $white;
-  padding: 12px 20px;
+  padding: 10px 18px;
 
   @media (max-width: $bp-mobile) {
-    padding: 12px 14px;
+    padding: 10px 14px;
   }
 }
 
 .headedCardTitle {
   flex: 1 1 auto;
   font-family: $font-heading;
-  font-size: 18px;
+  font-size: $size-card-heading;
   font-weight: $weight-heading;
   color: $white;
   margin: 0;
@@ -384,7 +416,24 @@
   box-shadow: inset 3px 0 0 0 $state-attention;
 }
 
-.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+/**
+ * Numeric columns are CENTRED - header and cell together.
+ *
+ * Both selectors are qualified on purpose. `.table thead th` sets
+ * `text-align: left` and outranks a bare `.numeric` on specificity, so the
+ * header used to sit left while its value sat right: the mismatch that made a
+ * report read as misaligned. Qualifying both means neither can win by
+ * accident if the base rules change.
+ *
+ * `tabular-nums` stays regardless - it fixes digit width, so figures still
+ * line up under one another rather than wandering with the glyphs.
+ */
+.table thead th.numeric,
+.table tbody td.numeric {
+  text-align: center;
+}
+
+.numeric { font-variant-numeric: tabular-nums; }
 
 // A filterable header becomes a button showing a caret, and a funnel mark when
 // a filter is set.

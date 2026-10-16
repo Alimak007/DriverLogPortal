@@ -1,10 +1,10 @@
 import { IPropertyPaneGroup } from '@microsoft/sp-property-pane';
 import * as React from 'react';
-import * as ReactDom from 'react-dom';
 import {
   FleetWebPartBase,
   IFleetWebPartProps,
 } from '../../common/webpart/FleetWebPartBase';
+import { FleetWebPartKey } from '../../common/webpart/access';
 import Reports, { IReportsProps } from './components/Reports';
 
 export type IReportsWebPartProps = IFleetWebPartProps;
@@ -17,12 +17,11 @@ export default class ReportsWebPart extends FleetWebPartBase<IReportsWebPartProp
       bootstrapError: this.bootstrapError,
     });
 
-    ReactDom.render(element, this.domElement);
+    this.renderElement(element);
   }
 
-  protected onDispose(): void {
-    ReactDom.unmountComponentAtNode(this.domElement);
-    super.onDispose();
+  protected accessKey(): FleetWebPartKey {
+    return 'reports';
   }
 
   protected settingsGroups(): IPropertyPaneGroup[] {

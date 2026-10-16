@@ -1141,13 +1141,29 @@ $tap: 46px;              // The height of every primary action
 // =============================================================================
 // The map picker
 // =============================================================================
-// Destinations are no longer a list: the requester searches TomTom live and
-// drops a pin anywhere in the UAE.
+// Destinations are no longer a list: the requester searches Google Places live
+// and drops a pin anywhere in the UAE.
 
 .mapPicker {
   display: flex;
   flex-direction: column;
   gap: $gap-md;
+
+  /**
+   * Screen 1 is the only flush screen - `.phoneBodyFlush` removes the card's
+   * 18px so the map can run edge to edge. That was never meant to apply to the
+   * fields underneath, which were left sitting on the card border.
+   *
+   * Everything except the map pane pads itself back in to match
+   * `.phoneBody` and `.phoneFooter`, so screen 1 lines up with every other
+   * screen. Targeting "not the map" rather than naming each child means a
+   * notice or a new row added later is padded too, instead of being the next
+   * thing found stuck to the edge.
+   */
+  > *:not(.mapPane) {
+    margin-left: 18px;
+    margin-right: 18px;
+  }
 }
 
 .mapPane {
@@ -1158,7 +1174,8 @@ $tap: 46px;              // The height of every primary action
   position: relative;
 }
 
-// A fixed height, because a Leaflet container with no height renders nothing.
+// A fixed height, because a map container with no height renders nothing -
+// true of Google Maps exactly as it was of Leaflet.
 // On a narrow screen the map sits above the fields rather than beside them.
 .mapCanvas {
   width: 100%;
@@ -1193,12 +1210,49 @@ $tap: 46px;              // The height of every primary action
   color: $muted;
 }
 
-// Leaflet writes this class onto the marker element itself, outside any CSS
-// module, so it has to be global. Passing our own className already drops
-// Leaflet's `leaflet-div-icon`; this is belt and braces against the white box.
+// The pin element handed to AdvancedMarkerElement as its `content`. It is
+// created in googleMapsBase.ts with document.createElement, so it never passes
+// through the CSS module and the class has to be global.
+//
+// `line-height: 0` is the one that matters: the SVG is an inline element, so
+// without it the marker container keeps a few pixels of text leading
+// underneath and the pin floats above the point it is meant to mark.
 :global(.fleet-pin) {
   background: none;
   border: none;
+  line-height: 0;
+  cursor: grab;
+}
+
+// Google's own focus ring on the marker container is left alone - it is the
+// only visible indicator for a keyboard user. Swallowing pointer events on the
+// SVG keeps the drag target on the container, where Google expects it.
+:global(.fleet-pin svg) {
+  display: block;
+  pointer-events: none;
+}
+
+// The planned-distance line under the map. Deliberately quiet: it is useful
+// context, not a figure anyone should be reconciling against a fuel claim.
+.estimateLine {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  background: $brand-light;
+  border: 1px solid $border;
+  border-radius: $radius-field;
+  font-family: $font-body;
+  font-size: $size-caption;
+  color: $muted;
+
+  strong {
+    font-weight: 700;
+    color: $brand-dark;
+  }
+
+  svg { flex: 0 0 auto; margin-top: 1px; }
 }
 
 .placeFields {
@@ -1286,7 +1340,19 @@ $tap: 46px;              // The height of every primary action
 
   &:hover { background: $brand-tint; }
 
+  &:disabled { opacity: 0.6; cursor: default; }
+
   span { min-width: 0; overflow-wrap: anywhere; }
+}
+
+// Google splits a prediction into a main line and a secondary one - "Marina
+// Mall" above "Ring Road, Abu Dhabi". TomTom returned one flat string, so this
+// is new: the district belongs under the name, not beside it, or long results
+// wrap into an unreadable block.
+.placeOptionMeta {
+  display: block;
+  font-size: $size-hint;
+  color: $muted;
 }
 
 .placeEmpty {
@@ -1369,10 +1435,3 @@ $tap: 46px;              // The height of every primary action
   border-radius: $radius-badge;
 }
 
-.routeMapNote {
-  margin: 0;
-  padding: 0 14px 12px;
-  font-family: $font-body;
-  font-size: $size-hint;
-  color: $muted;
-}

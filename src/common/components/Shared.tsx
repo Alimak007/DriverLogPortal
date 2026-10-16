@@ -41,6 +41,36 @@ export const PageShell: React.FC<IPageShellProps> = ({
   </div>
 );
 
+/**
+ * Shown in place of a web part the signed-in user is not meant to open.
+ *
+ * Says which page this is, which group opens it, and who to ask - a bare "no
+ * access" leaves someone with nothing to do but raise a ticket that the
+ * message could have answered.
+ *
+ * `role="status"`, not `role="alert"`: landing on the wrong page is not an
+ * emergency, and an alert interrupts whatever a screen reader was saying.
+ */
+export const AccessNotice: React.FC<{
+  title: string;
+  groups: string[];
+}> = ({ title, groups }) => (
+  <div className={styles.shell}>
+    <div className={styles.accessNotice} role="status">
+      <div className={styles.accessTitle}>{title} is not available to you</div>
+      <p className={styles.accessBody}>
+        This page is for members of{' '}
+        <strong>{groups.join(' and ')}</strong>. Your account is not in{' '}
+        {groups.length > 1 ? 'either group' : 'that group'}.
+      </p>
+      <p className={styles.accessBody}>
+        If you think you should have access, ask the Transportation Coordinator
+        to add you.
+      </p>
+    </div>
+  </div>
+);
+
 export const SectionHeading: React.FC<{ children: React.ReactNode; id?: string }> = ({
   children,
   id,
@@ -154,7 +184,8 @@ export const HeadedCard: React.FC<{
 }> = ({ icon, title, actions, className, children }) => (
   <section className={[styles.headedCard, className ?? ''].join(' ')} aria-label={title}>
     <header className={styles.headedCardHeader}>
-      <Icon name={icon} size={22} />
+      {/* Tracks the 15px title - a 22px glyph beside it looked top-heavy. */}
+      <Icon name={icon} size={18} />
       <h2 className={styles.headedCardTitle}>{title}</h2>
       {actions ? <div className={styles.headedCardActions}>{actions}</div> : undefined}
     </header>
@@ -322,13 +353,32 @@ export const ErrorBanner: React.FC<{ error: unknown; onDismiss?: () => void }> =
   if (!error) return <></>;
 
   const portal = error instanceof PortalError ? error : undefined;
-  const whatFailed = portal
-    ? portal.whatFailed
-    : 'Something went wrong.';
+
+  /**
+   * A plain Error carries a REAL MESSAGE - show it.
+   *
+   * Every web part reports a refused action as `new Error(result.message)`,
+   * where the message is the specific reason: "This offer was already accepted
+   * by another driver", "The closing reading must be higher than the opening
+   * one". Falling through to "Something went wrong." threw all of that away
+   * and turned every refusal into an unexplained dead end - a driver tapping a
+   * button and seeing nothing useful happen.
+   *
+   * PortalError still wins where present, because it carries a correlation id
+   * and a tailored next step.
+   */
+  const plainMessage =
+    !portal && error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : undefined;
+
+  const whatFailed = portal ? portal.whatFailed : plainMessage ?? 'Something went wrong.';
   const whatToDo = portal
     ? portal.whatToDo
-    : 'Refresh the page and try again. If it keeps failing, contact the ' +
-      'Transportation Coordinator.';
+    : plainMessage
+      ? 'Correct it and try again.'
+      : 'Refresh the page and try again. If it keeps failing, contact the ' +
+        'Transportation Coordinator.';
 
   return (
     <div className={styles.errorBanner} role="alert">

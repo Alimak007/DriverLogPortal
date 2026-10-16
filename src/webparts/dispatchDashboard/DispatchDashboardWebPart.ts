@@ -1,11 +1,11 @@
 import { IPropertyPaneGroup, PropertyPaneSlider } from '@microsoft/sp-property-pane';
 import * as React from 'react';
-import * as ReactDom from 'react-dom';
 import { APP_CONFIG } from '../../common/config/AppConfig';
 import {
   FleetWebPartBase,
   IFleetWebPartProps,
 } from '../../common/webpart/FleetWebPartBase';
+import { FleetWebPartKey } from '../../common/webpart/access';
 import DispatchDashboard, {
   IDispatchDashboardProps,
 } from './components/DispatchDashboard';
@@ -27,12 +27,11 @@ export default class DispatchDashboardWebPart extends FleetWebPartBase<IDispatch
       },
     );
 
-    ReactDom.render(element, this.domElement);
+    this.renderElement(element);
   }
 
-  protected onDispose(): void {
-    ReactDom.unmountComponentAtNode(this.domElement);
-    super.onDispose();
+  protected accessKey(): FleetWebPartKey {
+    return 'dispatchDashboard';
   }
 
   protected settingsGroups(): IPropertyPaneGroup[] {

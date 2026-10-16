@@ -863,7 +863,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
       <div className={styles.titleRow}>
         <header className={styles.titleBar}>
           <span className={styles.titleIcon} aria-hidden="true">
-            <Icon name="user" size={26} />
+            <Icon name="user" size={20} />
           </span>
           <h1 className={styles.title}>{TITLE}</h1>
         </header>
@@ -1122,7 +1122,7 @@ export const DispatchDashboard: React.FC<IDispatchDashboardProps> = ({
       {snapshot ? (
         <section className={styles.steps} ref={stepsRef} aria-label="Allocate driver and vehicle">
           <header className={styles.stepsBar}>
-            <Icon name="gear" size={22} />
+            <Icon name="gear" size={18} />
             <h2 className={styles.stepsTitle}>Allocate Driver &amp; Vehicle (Steps)</h2>
           </header>
           <AllocationSteps

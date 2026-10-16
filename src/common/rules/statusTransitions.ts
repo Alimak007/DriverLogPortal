@@ -75,14 +75,42 @@ export function mayChangeTripStatus(
   return false;
 }
 
+/** What, if anything, to ask the driver for at a given transition. */
+export interface IOdometerPrompt {
+  field: 'opening' | 'closing';
+  /** False means the driver may tap straight through without typing. */
+  required: boolean;
+}
+
 /**
- * The opening odometer reading is captured at the "On my way" tap, the
- * closing reading is prompted for at "Complete". Both flow into the
- * Daily Trip Sheet.
+ * The odometer is ALL OR NOTHING per trip.
+ *
+ * Since the booking carries a road distance from the map, a driver no longer
+ * has to read the dash at the kerbside at all. But a trip with an opening
+ * reading and no closing one is worse than a trip with neither: it looks like
+ * real data and cannot be subtracted into anything. So:
+ *
+ *   - Opening, at "On my way": OFFERED, never required.
+ *   - Closing, at "Complete" : only EXISTS if an opening reading was given,
+ *                              and is then REQUIRED, because the pair is the
+ *                              only thing that yields a distance.
+ *
+ * A trip with neither reading falls back to the planned distance for the
+ * monthly trip sheet. A trip with both is measured, and measured always wins.
+ *
+ * `hasOpeningReading` is read from the saved trip, not from component state,
+ * so the rule survives a reload between the two taps.
  */
-export function odometerPromptFor(to: TripStatus): 'opening' | 'closing' | undefined {
-  if (to === 'En Route') return 'opening';
-  if (to === 'Completed') return 'closing';
+export function odometerPromptFor(
+  to: TripStatus,
+  hasOpeningReading: boolean,
+): IOdometerPrompt | undefined {
+  if (to === 'En Route') return { field: 'opening', required: false };
+  if (to === 'Completed') {
+    // No opening reading means there is nothing to close. Hide it entirely
+    // rather than showing a box that can only produce an orphan number.
+    return hasOpeningReading ? { field: 'closing', required: true } : undefined;
+  }
   return undefined;
 }
 

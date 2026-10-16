@@ -192,6 +192,10 @@ export class ReportService implements IReportService {
           { key: 'vehicle', label: 'Vehicle' },
           { key: 'status', label: 'Status' },
           { key: 'distance', label: 'Distance (km)', numeric: true },
+          // Says whether the kilometres were read off the dash or planned by
+          // the map. Without it the column is two different measurements
+          // wearing one heading.
+          { key: 'distanceSource', label: 'Distance from' },
         ];
       case 'VehicleUtilisation':
         return [
@@ -256,20 +260,48 @@ export class ReportService implements IReportService {
 
     const scopedTrips = trips.filter(inScope);
 
+    /**
+     * Distance for one trip, and where the number came from.
+     *
+     * THE ODOMETER WINS WHENEVER IT EXISTS. It measures the vehicle - the run
+     * out to the pickup, the detour, the diversion - while the booking's
+     * estimate only ever covered the planned pickup-to-drop-off leg as it
+     * looked at booking time. Since the reading became optional for drivers,
+     * most trips now fall back to the estimate, so the SOURCE is reported
+     * beside the figure rather than the two being silently mixed in one
+     * column. A fuel or servicing reconciliation needs to know which it has.
+     */
+    const distanceOf = (
+      t: ITripAssignment,
+    ): { km?: number; source: 'Odometer' | 'Estimated' | 'None' } => {
+      if (t.closingReading !== undefined && t.openingReading !== undefined) {
+        return { km: t.closingReading - t.openingReading, source: 'Odometer' };
+      }
+      // The trip's own snapshot first - that is what the monthly trip sheet
+      // reads, and it is frozen at allocation. The request is only a fallback
+      // for trips allocated before the column existed.
+      const est =
+        t.estimatedDistanceKm ?? requestById.get(t.request?.id ?? -1)?.estimatedDistanceKm;
+      if (est !== undefined) return { km: est, source: 'Estimated' };
+      return { source: 'None' };
+    };
+
     switch (key) {
       case 'TripSummary':
-        return scopedTrips.map((t) => ({
-          tripId: t.tripId,
-          requestId: t.request?.title ?? '',
-          requiredOn: requestById.get(t.request?.id ?? -1)?.requiredDateTime?.toISOString() ?? '',
-          driver: t.driver?.title ?? '',
-          vehicle: t.vehicle?.title ?? '',
-          status: t.tripStatus,
-          distance:
-            t.closingReading !== undefined && t.openingReading !== undefined
-              ? t.closingReading - t.openingReading
-              : undefined,
-        }));
+        return scopedTrips.map((t) => {
+          const d = distanceOf(t);
+          return {
+            tripId: t.tripId,
+            requestId: t.request?.title ?? '',
+            requiredOn:
+              requestById.get(t.request?.id ?? -1)?.requiredDateTime?.toISOString() ?? '',
+            driver: t.driver?.title ?? '',
+            vehicle: t.vehicle?.title ?? '',
+            status: t.tripStatus,
+            distance: d.km,
+            distanceSource: d.source === 'None' ? '' : d.source,
+          };
+        });
 
       case 'VehicleUtilisation': {
         const byVehicle = new Map<string, { trips: number; hours: number; distance: number }>();
@@ -278,9 +310,11 @@ export class ReportService implements IReportService {
           const agg = byVehicle.get(name) ?? { trips: 0, hours: 0, distance: 0 };
           agg.trips += 1;
           agg.hours += hoursBetween(t.actualStartTime, t.actualDropTime);
-          if (t.closingReading !== undefined && t.openingReading !== undefined) {
-            agg.distance += t.closingReading - t.openingReading;
-          }
+          // A total cannot carry a per-trip source label, so this sum mixes
+          // measured and planned kilometres by design. Trip Summary is the
+          // report to use when the distinction matters.
+          const d = distanceOf(t);
+          if (d.km !== undefined) agg.distance += d.km;
           byVehicle.set(name, agg);
         });
         return Array.from(byVehicle.entries()).map(([vehicle, a]) => ({

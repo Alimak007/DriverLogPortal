@@ -224,6 +224,8 @@ export const SELECT_REQUEST = [
   // down to 6.
   'PickupText', 'PickupPlaceId', 'PickupLat', 'PickupLng', 'PickupNotes',
   'DropOffText', 'DropOffPlaceId', 'DropOffLat', 'DropOffLng', 'DropOffNotes',
+  // Planned road distance and time, written once at booking.
+  'EstimatedDistanceKm', 'EstimatedDurationMinutes',
   'Requester/Id', 'Requester/Title', 'Requester/EMail',
   'Property/Id', 'Property/Title',
   'VehicleTypeRequested/Id', 'VehicleTypeRequested/Title',
@@ -252,6 +254,9 @@ export function toRequest(raw: any): ITransportRequest {
     dropOffLat: raw.DropOffLat ?? undefined,
     dropOffLng: raw.DropOffLng ?? undefined,
     dropOffNotes: raw.DropOffNotes ?? undefined,
+
+    estimatedDistanceKm: raw.EstimatedDistanceKm ?? undefined,
+    estimatedDurationMinutes: raw.EstimatedDurationMinutes ?? undefined,
 
     requiredDateTime: parseDate(raw.RequiredDateTime) ?? new Date(0),
     returnDateTime: parseDate(raw.ReturnDateTime),
@@ -298,7 +303,11 @@ export const SELECT_TRIP = [
   // The reference lives in Title. There is no TripId column.
   'Id', 'Title', 'AcceptedOn', 'TripStatus', 'EtaMinutes',
   'EtaUpdatedOn', 'ActualStartTime', 'ActualPickupTime', 'ActualDropTime',
-  'OpeningReading', 'ClosingReading', 'AllocationMode', 'IsOverride',
+  'OpeningReading', 'ClosingReading',
+  // Snapshot of the planned route, copied from the request at allocation so
+  // the trip sheet can be built from this list alone.
+  'EstimatedDistanceKm', 'EstimatedDurationMinutes',
+  'AllocationMode', 'IsOverride',
   'OverrideReason', 'CancellationReason', 'Created', 'Modified',
   'Request/Id', 'Request/Title', 'Driver/Id', 'Driver/Title',
   'Vehicle/Id', 'Vehicle/Title',
@@ -322,6 +331,8 @@ export function toTrip(raw: any): ITripAssignment {
     actualDropTime: parseDate(raw.ActualDropTime),
     openingReading: raw.OpeningReading ?? undefined,
     closingReading: raw.ClosingReading ?? undefined,
+    estimatedDistanceKm: raw.EstimatedDistanceKm ?? undefined,
+    estimatedDurationMinutes: raw.EstimatedDurationMinutes ?? undefined,
     allocationMode: (raw.AllocationMode ?? 'Automatic') as AllocationMode,
     allocatedBy: person(raw.AllocatedBy),
     isOverride: raw.IsOverride === true,

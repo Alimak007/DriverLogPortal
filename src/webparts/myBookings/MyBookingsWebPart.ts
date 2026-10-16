@@ -1,11 +1,11 @@
 import { IPropertyPaneGroup, PropertyPaneSlider } from '@microsoft/sp-property-pane';
 import * as React from 'react';
-import * as ReactDom from 'react-dom';
 import { APP_CONFIG } from '../../common/config/AppConfig';
 import {
   FleetWebPartBase,
   IFleetWebPartProps,
 } from '../../common/webpart/FleetWebPartBase';
+import { FleetWebPartKey } from '../../common/webpart/access';
 import MyBookings, { IMyBookingsProps } from './components/MyBookings';
 
 export interface IMyBookingsWebPartProps extends IFleetWebPartProps {
@@ -24,12 +24,11 @@ export default class MyBookingsWebPart extends FleetWebPartBase<IMyBookingsWebPa
       bookARideUrl: `${this.context.pageContext.web.absoluteUrl}${APP_CONFIG.pages.bookARide}`,
     });
 
-    ReactDom.render(element, this.domElement);
+    this.renderElement(element);
   }
 
-  protected onDispose(): void {
-    ReactDom.unmountComponentAtNode(this.domElement);
-    super.onDispose();
+  protected accessKey(): FleetWebPartKey {
+    return 'myBookings';
   }
 
   protected settingsGroups(): IPropertyPaneGroup[] {

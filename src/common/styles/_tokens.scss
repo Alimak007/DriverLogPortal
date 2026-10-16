@@ -98,6 +98,9 @@ $font-body:    'Roboto', 'Segoe UI', Arial, sans-serif;
 $size-page-heading:    24px;
 $size-page-heading-sm: 21px;
 $size-section-heading: 19px;
+// The brown bar at the top of a card. Below a section heading on purpose: it
+// labels a panel, it does not open a section of the page.
+$size-card-heading:    15px;
 $size-table-header:    14px;
 $size-table-cell:      14px;
 $size-table-cell-sm:   13px;   // below $bp-narrow

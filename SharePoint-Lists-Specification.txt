@@ -876,3 +876,99 @@ than failing silently.
     setEta. Each is a web part property, set per environment. Until one is
     configured, that action fails with a message naming which URL is missing -
     it does not fail silently.
+
+================================================================================
+ADDENDUM - ROUTE DISTANCE (15 October 2026)
+================================================================================
+Added when the booking form started reading a planned road distance from the
+Google Routes API, so that drivers are no longer required to key odometer
+readings at the kerbside.
+
+TransportRequests  [MODIFY]  - two columns to add
+
+  Internal name              Display name          Type     Required  Indexed
+  -------------------------  --------------------  -------  --------  -------
+  EstimatedDistanceKm        Estimated distance    Number   no        no
+  EstimatedDurationMinutes   Estimated duration    Number   no        no
+
+  EstimatedDistanceKm        One decimal place. Kilometres by road, pickup to
+                             drop-off, as the Routes API returned them at the
+                             moment of booking.
+  EstimatedDurationMinutes   Whole minutes, free-flowing traffic.
+
+  BOTH ARE OPTIONAL AND MUST STAY OPTIONAL. If Google is unreachable, or the
+  Routes API is not enabled, the booking still has to succeed - it simply
+  saves without an estimate. Marking either column Required would turn a
+  third-party outage into an inability to book a car.
+
+WHAT THESE NUMBERS ARE NOT
+  They are the PLANNED laden leg only. They do not include the driver's run
+  from wherever they are to the pickup point, and they cannot include a
+  detour, a diversion or a wrong turn, because they were calculated before the
+  trip happened.
+
+  TripAssignments.OpeningReading / ClosingReading still measure the VEHICLE,
+  and remain the preferred figure wherever a driver supplies them. They are
+  now optional rather than mandatory.
+
+REPORTING RULE
+  Trip Summary and Vehicle Utilisation take the odometer delta when both
+  readings exist, and fall back to EstimatedDistanceKm when they do not. Trip
+  Summary carries a "Distance from" column reading Odometer or Estimated, so
+  the two measurements are never silently totalled as one. Vehicle Utilisation
+  is an aggregate and cannot carry that label - use Trip Summary when the
+  distinction matters, for example a fuel reconciliation.
+
+GOOGLE CLOUD PREREQUISITE
+  The Routes API must be enabled on the project behind the key (project
+  725881869333 for the interim key). Without it every booking saves with an
+  empty estimate and the console logs a 403 naming the disabled API.
+  The legacy Directions API is NOT an alternative - Google has closed it to
+  projects created from 2025 onwards, which is why this uses Routes.
+
+--------------------------------------------------------------------------------
+ADDENDUM UPDATE - ODOMETER BECOMES OPTIONAL (15 October 2026)
+--------------------------------------------------------------------------------
+
+TripAssignments  [MODIFY]  - two columns to add
+
+  Internal name              Display name          Type     Required  Indexed
+  -------------------------  --------------------  -------  --------  -------
+  EstimatedDistanceKm        Estimated distance    Number   no        no
+  EstimatedDurationMinutes   Estimated duration    Number   no        no
+
+  Copied from the TransportRequests row when the trip is created - by
+  acceptOffer for an automatic allocation, and by manualAssign for a
+  Coordinator one. Reassigning an existing trip does not touch them, because
+  the route has not changed.
+
+  A SNAPSHOT ON PURPOSE. If someone edits the request afterwards the trip
+  keeps the distance that applied when it was allocated, which is what a
+  historical trip sheet should show. It also means the monthly TRF can be
+  built from TripAssignments alone, with no join back to TransportRequests.
+
+ODOMETER RULE - ALL OR NOTHING
+
+  OpeningReading and ClosingReading stay OPTIONAL columns, but the driver
+  form now enforces a pairing:
+
+    Driver taps "On my way"  ->  opening reading OFFERED, may be skipped.
+    Driver taps "Complete"   ->  closing reading is HIDDEN if no opening
+                                 reading was given;
+                                 SHOWN AND MANDATORY if one was.
+
+  The closing reading must also be greater than the opening one.
+
+  A trip therefore ends in exactly one of two states:
+    - both readings present  -> distance is MEASURED, and always preferred
+    - neither present        -> distance falls back to EstimatedDistanceKm
+
+  There is deliberately no third state. One reading alone cannot be
+  subtracted into a distance, and storing it would look like data while being
+  useless to the trip sheet.
+
+MONTHLY TRF
+  Where a trip has no odometer pair, the TRF uses TripAssignments.
+  EstimatedDistanceKm. Trip Summary in the Reports web part shows a
+  "Distance from" column reading Odometer or Estimated so the two are never
+  silently totalled as one.

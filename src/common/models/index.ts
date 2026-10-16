@@ -165,6 +165,20 @@ export interface ITransportRequest extends IListItemBase {
   dropOffLng?: number;
   dropOffNotes?: string;
 
+  /**
+   * Road distance pickup -> drop-off, from the Routes API at booking time.
+   *
+   * THIS IS A PLANNED DISTANCE, NOT A DRIVEN ONE. It covers only the laden
+   * leg: the driver's run from wherever they are to the pickup is not in it,
+   * and neither is any detour, diversion or wrong turn. The odometer readings
+   * on the trip measure the vehicle; this measures the route. Where both
+   * exist, reports prefer the odometer, because that is the auditable figure
+   * the fuel and servicing records are built on.
+   */
+  estimatedDistanceKm?: number;
+  /** Driving time for the same route, free traffic. Also an estimate. */
+  estimatedDurationMinutes?: number;
+
   requiredDateTime: Date;
   returnDateTime?: Date;
   noOfPax?: number;
@@ -211,8 +225,26 @@ export interface ITripAssignment extends IListItemBase {
   actualStartTime?: Date;
   actualPickupTime?: Date;
   actualDropTime?: Date;
+  /**
+   * ALL OR NOTHING. Either both readings are present, or neither is - the
+   * driver form enforces it, because one reading alone cannot be subtracted
+   * into a distance and would look like data while being useless.
+   */
   openingReading?: number;
   closingReading?: number;
+  /**
+   * Copied from the request when the trip is created, so the monthly trip
+   * sheet can be built from TripAssignments alone without joining back.
+   *
+   * A SNAPSHOT, deliberately. If someone later edits the request, the trip
+   * keeps the distance that applied when it was allocated - which is what a
+   * historical trip sheet should show.
+   *
+   * Planned pickup-to-drop-off only: no deadhead leg, no detour. Where the
+   * odometer pair exists it is the better number and reports prefer it.
+   */
+  estimatedDistanceKm?: number;
+  estimatedDurationMinutes?: number;
   allocationMode: AllocationMode;
   allocatedBy?: IPerson;
   isOverride: boolean;

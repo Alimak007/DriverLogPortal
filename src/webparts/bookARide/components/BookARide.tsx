@@ -54,6 +54,7 @@ import {
 import { distanceKm } from '../../../common/rules/dispatchRules';
 import MapPicker, { IPlace } from './MapPicker';
 import RouteMap from './RouteMap';
+import { IRouteEstimate, routeDistance } from './googleMapsBase';
 import styles from './BookARide.module.scss';
 
 export interface IBookARideProps {
@@ -63,15 +64,18 @@ export interface IBookARideProps {
   /** Property to book against. Defaults to the requester's own property. */
   defaultPropertyId: number;
   /**
-   * TomTom key for the map tiles and the place search.
+   * Google Maps key for the basemap, the place search and the reverse geocode.
    *
    * The SPFx bundle is readable by any authenticated user, so this key IS
    * extractable. That is expected for a browser key - but it must be
-   * restricted by HTTP referrer to the SharePoint domain in the TomTom
-   * developer portal, and a daily usage alert must be set. Do not ship
-   * without both.
+   * restricted by HTTP referrer to the SharePoint domain AND by API, with a
+   * budget alert set. This key is attached to a billing account, so an
+   * unrestricted one runs up a bill rather than hitting a rate limit. Do not
+   * ship without all three.
    */
-  tomtomApiKey: string;
+  googleMapsApiKey: string;
+  /** Cloud Map ID. Optional - without it the classic marker is used. */
+  googleMapsMapId?: string;
   /** How long screen 5 waits for a driver before offering to carry on. */
   processingPollMs: number;
   /** The My Bookings page. The link to it is left out when this is not given. */
@@ -170,11 +174,67 @@ const emptyDraft = (): IDraft => ({
 export const BookARide: React.FC<IBookARideProps> = (props) => {
   const {
     services, user, bootstrapError, defaultPropertyId, processingPollMs,
-    myBookingsUrl, tomtomApiKey,
+    myBookingsUrl, googleMapsApiKey, googleMapsMapId,
   } = props;
 
   const [screen, setScreen] = React.useState<ScreenIndex>(1);
   const [draft, setDraft] = React.useState<IDraft>(emptyDraft());
+
+  /**
+   * The planned road distance, re-read whenever either end moves.
+   *
+   * Kept OUT of the draft on purpose: it is derived from the two places, not
+   * something the requester edits, and holding it in the draft would mean
+   * every pin drag had to remember to invalidate it.
+   */
+  const [estimate, setEstimate] = React.useState<IRouteEstimate | undefined>();
+  const [estimating, setEstimating] = React.useState(false);
+
+  const pickupLat = draft.pickup?.lat;
+  const pickupLng = draft.pickup?.lng;
+  const dropOffLat = draft.dropOff?.lat;
+  const dropOffLng = draft.dropOff?.lng;
+
+  /**
+   * Price the route whenever both ends are known.
+   *
+   * Keyed on the four coordinates rather than the place objects, so a
+   * re-render with the same pins costs nothing. Dragging a pin DOES move a
+   * coordinate and so does re-read - which is correct, and bounded: one call
+   * per distinct pair of points, not one per keystroke.
+   */
+  React.useEffect(() => {
+    if (
+      pickupLat === undefined || pickupLng === undefined ||
+      dropOffLat === undefined || dropOffLng === undefined
+    ) {
+      setEstimate(undefined);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setEstimating(true);
+
+    routeDistance(
+      googleMapsApiKey,
+      { lat: pickupLat, lng: pickupLng },
+      { lat: dropOffLat, lng: dropOffLng },
+    )
+      .then((r) => {
+        if (cancelled) return;
+        setEstimate(r);
+        setEstimating(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEstimate(undefined);
+        setEstimating(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleMapsApiKey, pickupLat, pickupLng, dropOffLat, dropOffLng]);
   const [vehicleTypes, setVehicleTypes] = React.useState<IVehicleType[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
@@ -383,6 +443,10 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
         dropOffLat: draft.dropOff.lat,
         dropOffLng: draft.dropOff.lng,
         dropOffNotes: draft.dropOffNotes.trim() || undefined,
+        // Whatever the Routes API returned while the requester was picking.
+        // Undefined is a normal outcome here, not an error.
+        estimatedDistanceKm: estimate?.distanceKm,
+        estimatedDurationMinutes: estimate?.durationMinutes,
         requiredDateTime: draft.slot,
         vehicleTypeId: draft.vehicleType.id,
         noOfPax: !isItems && isOthers && !isNaN(pax) ? pax : undefined,
@@ -500,9 +564,12 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
             draft={draft}
             setDraft={setDraft}
             validation={validation}
-            apiKey={tomtomApiKey}
+            apiKey={googleMapsApiKey}
+            mapId={googleMapsMapId}
             isActive={screen === 1}
             area={area}
+            estimate={estimate}
+            estimating={estimating}
           />
         ) : undefined}
 
@@ -541,7 +608,12 @@ export const BookARide: React.FC<IBookARideProps> = (props) => {
         ) : undefined}
 
         {screen === 7 && tracked ? (
-          <ScreenTrack result={tracked} apiKey={tomtomApiKey} onBookAnother={startOver} />
+          <ScreenTrack
+            result={tracked}
+            apiKey={googleMapsApiKey}
+            mapId={googleMapsMapId}
+            onBookAnother={startOver}
+          />
         ) : undefined}
 
           </div>
@@ -640,12 +712,18 @@ function ScreenWhere({
   setDraft,
   validation,
   apiKey,
+  mapId,
   isActive,
   area,
+  estimate,
+  estimating,
 }: IScreenProps & {
   apiKey: string;
+  mapId?: string;
   isActive: boolean;
   area: { centre: { lat: number; lng: number }; radiusKm: number };
+  estimate?: IRouteEstimate;
+  estimating: boolean;
 }): JSX.Element {
   // A warning, never a block. A pickup outside the operating area can still be
   // booked - it simply routes to the Coordinator instead of broadcasting.
@@ -658,6 +736,7 @@ function ScreenWhere({
     <div className={styles.screen}>
       <MapPicker
         apiKey={apiKey}
+        mapId={mapId}
         isActive={isActive}
         centre={area.centre}
         radiusKm={area.radiusKm}
@@ -670,6 +749,27 @@ function ScreenWhere({
         onPickupNotes={(n) => setDraft((d) => ({ ...d, pickupNotes: n }))}
         onDropOffNotes={(n) => setDraft((d) => ({ ...d, dropOffNotes: n }))}
       />
+
+      {/*
+        The word "about" is doing real work here. This is the planned route,
+        free of traffic, and it does not include the driver's run to the
+        pickup. Stating it flatly as "18 km" would invite someone to reconcile
+        it against a fuel claim and find it short every single time.
+      */}
+      {estimating || estimate ? (
+        <p className={styles.estimateLine}>
+          <Icon name="navigation" size={16} />
+          {estimating ? (
+            <span>Working out the distance&hellip;</span>
+          ) : (
+            <span>
+              About <strong>{estimate?.distanceKm} km</strong>, roughly{' '}
+              <strong>{estimate?.durationMinutes} min</strong> driving. Planned route
+              only &mdash; it does not count the driver getting to you.
+            </span>
+          )}
+        </p>
+      ) : undefined}
 
       {farOut ? (
         <Notice tone="attention">
@@ -1503,9 +1603,10 @@ function ScreenConfirmed({ result, myBookingsUrl, onTrack, onBookAnother }: {
  * remain on screen THROUGHOUT, because that is what a requester at a kerbside
  * actually needs in order to identify the car that pulls up.
  */
-function ScreenTrack({ result, apiKey, onBookAnother }: {
+function ScreenTrack({ result, apiKey, mapId, onBookAnother }: {
   result: IRequestWithTrip;
   apiKey: string;
+  mapId?: string;
   onBookAnother: () => void;
 }): JSX.Element {
   const { request, trip } = result;
@@ -1587,6 +1688,7 @@ function ScreenTrack({ result, apiKey, onBookAnother }: {
           request.dropOffLng !== undefined ? (
             <RouteMap
               apiKey={apiKey}
+              mapId={mapId}
               isActive
               pickupLat={request.pickupLat}
               pickupLng={request.pickupLng}

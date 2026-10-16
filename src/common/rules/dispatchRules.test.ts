@@ -24,6 +24,8 @@ import {
   TripStatus,
 } from '../models';
 import { formatRequestRef, formatTripRef } from './identifiers';
+import { ActorRole, odometerPromptFor } from './statusTransitions';
+import { FleetWebPartKey, mayOpen } from '../webpart/access';
 
 // -----------------------------------------------------------------------------
 // Builders - a valid object by default, overridden per test
@@ -334,5 +336,93 @@ describe('identifiers', () => {
 
   it('does not truncate past four digits', () => {
     expect(formatRequestRef(12345)).toBe('FB-12345');
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Odometer prompting
+// -----------------------------------------------------------------------------
+
+describe('odometerPromptFor', () => {
+  it('offers the opening reading at En Route, without requiring it', () => {
+    const prompt = odometerPromptFor(TRIP_STATUS.EnRoute, false);
+    expect(prompt).toEqual({ field: 'opening', required: false });
+  });
+
+  it('still only offers the opening reading when one somehow exists already', () => {
+    const prompt = odometerPromptFor(TRIP_STATUS.EnRoute, true);
+    expect(prompt?.required).toBe(false);
+  });
+
+  // The whole point of the all-or-nothing rule: a closing reading with no
+  // opening one cannot be subtracted into anything, so it is never asked for.
+  it('hides the closing reading when the driver skipped the opening one', () => {
+    expect(odometerPromptFor(TRIP_STATUS.Completed, false)).toBeUndefined();
+  });
+
+  it('requires the closing reading once an opening one was given', () => {
+    const prompt = odometerPromptFor(TRIP_STATUS.Completed, true);
+    expect(prompt).toEqual({ field: 'closing', required: true });
+  });
+
+  it('asks for nothing on the other transitions', () => {
+    expect(odometerPromptFor(TRIP_STATUS.InTransit, true)).toBeUndefined();
+    expect(odometerPromptFor(TRIP_STATUS.InTransit, false)).toBeUndefined();
+    expect(odometerPromptFor(TRIP_STATUS.Assigned, true)).toBeUndefined();
+    expect(odometerPromptFor(TRIP_STATUS.Cancelled, true)).toBeUndefined();
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Web part access
+// -----------------------------------------------------------------------------
+
+describe('mayOpen', () => {
+  const ALL: FleetWebPartKey[] = [
+    'bookARide',
+    'myBookings',
+    'driverDashboard',
+    'dispatchDashboard',
+    'reports',
+  ];
+
+  /** The keys a role may open, asserted against every key so nothing leaks. */
+  const expectExactly = (roles: ActorRole[], allowed: FleetWebPartKey[]): void => {
+    ALL.forEach((key) => {
+      expect({ key, open: mayOpen(roles, key) }).toEqual({
+        key,
+        open: allowed.indexOf(key) !== -1,
+      });
+    });
+  };
+
+  it('lets FM Admins open everything', () => {
+    expectExactly(['admin'], ALL);
+  });
+
+  it('limits FM Coordinators to the dashboard and reports', () => {
+    expectExactly(['coordinator'], ['dispatchDashboard', 'reports']);
+  });
+
+  it('limits FM Drivers to the driver dashboard', () => {
+    expectExactly(['driver'], ['driverDashboard']);
+  });
+
+  it('limits FM Requesters to booking and my bookings', () => {
+    expectExactly(['requester'], ['bookARide', 'myBookings']);
+  });
+
+  // Someone in two groups holds two roles and gets the union, not the
+  // intersection - a Coordinator who also drives needs both consoles.
+  it('unions the roles of someone in several groups', () => {
+    expectExactly(
+      ['coordinator', 'driver'],
+      ['dispatchDashboard', 'reports', 'driverDashboard'],
+    );
+  });
+
+  it('opens nothing for no roles at all', () => {
+    expectExactly([], []);
+    ALL.forEach((key) => expect(mayOpen(undefined, key)).toBe(false));
   });
 });

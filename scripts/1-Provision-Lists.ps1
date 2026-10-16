@@ -265,6 +265,17 @@ Ensure-Field  -List 'TransportRequests' -Name 'DropOffPlaceId' -Type Text
 Ensure-Field  -List 'TransportRequests' -Name 'DropOffLat'     -Type Number -Required
 Ensure-Field  -List 'TransportRequests' -Name 'DropOffLng'     -Type Number -Required
 Ensure-Field  -List 'TransportRequests' -Name 'DropOffNotes'   -Type Note
+
+# Planned road distance and driving time, written once at booking from the
+# Google Routes API. NOT required: a routing outage must never stop a booking,
+# so both stay empty when Google could not be reached.
+#
+# This is the PLANNED pickup-to-drop-off leg. It excludes the driver's run to
+# the pickup and any detour, which is why the odometer readings on
+# TripAssignments are still the preferred figure wherever a driver supplies
+# them. Reports state which of the two they used.
+Ensure-Field  -List 'TransportRequests' -Name 'EstimatedDistanceKm'      -Type Number
+Ensure-Field  -List 'TransportRequests' -Name 'EstimatedDurationMinutes' -Type Number
 Ensure-Lookup -List 'TransportRequests' -Name 'VehicleTypeRequested' -TargetList 'VehicleTypes' -Required
 Ensure-Field  -List 'TransportRequests' -Name 'RequiredDateTime' -Type DateTime -Required -Indexed
 Ensure-Field  -List 'TransportRequests' -Name 'ReturnDateTime'   -Type DateTime
@@ -300,8 +311,18 @@ Ensure-Field  -List 'TripAssignments' -Name 'EtaUpdatedOn'     -Type DateTime
 Ensure-Field  -List 'TripAssignments' -Name 'ActualStartTime'  -Type DateTime
 Ensure-Field  -List 'TripAssignments' -Name 'ActualPickupTime' -Type DateTime
 Ensure-Field  -List 'TripAssignments' -Name 'ActualDropTime'   -Type DateTime
+# ALL OR NOTHING, and both optional. The driver form offers the opening
+# reading and lets it be skipped; if one IS given, the closing reading becomes
+# mandatory, because a single reading cannot be subtracted into a distance.
 Ensure-Field  -List 'TripAssignments' -Name 'OpeningReading'   -Type Number
 Ensure-Field  -List 'TripAssignments' -Name 'ClosingReading'   -Type Number
+
+# Snapshot of the planned route, copied from the request when the trip is
+# created. Lets the monthly trip sheet be built from TripAssignments alone,
+# and freezes the figure at allocation so a later edit to the request cannot
+# rewrite history. Used when the odometer pair is absent.
+Ensure-Field  -List 'TripAssignments' -Name 'EstimatedDistanceKm'      -Type Number
+Ensure-Field  -List 'TripAssignments' -Name 'EstimatedDurationMinutes' -Type Number
 Ensure-Field  -List 'TripAssignments' -Name 'AllocationMode' -Type Choice -Required -Default 'Automatic' `
               -Choices 'Automatic', 'Manual'
 Ensure-Field  -List 'TripAssignments' -Name 'AllocatedBy'    -Type User

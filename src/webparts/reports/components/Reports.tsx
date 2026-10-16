@@ -26,7 +26,7 @@ import {
   Select,
   TextField,
 } from '../../../common/components/Shared';
-import { IProperty, IVehicleType, REQUEST_TYPES, RequestType } from '../../../common/models';
+import { IVehicleType, REQUEST_TYPES, RequestType } from '../../../common/models';
 import { REPORTS } from '../../../common/services/ReportService';
 import {
   ICurrentUser,
@@ -70,7 +70,6 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
   const [to, setTo] = React.useState(toDateInput(initial.to));
   const [requestType, setRequestType] = React.useState<string>('');
   const [vehicleTypeId, setVehicleTypeId] = React.useState<string>('');
-  const [propertyId, setPropertyId] = React.useState<string>('');
 
   const [reportKey, setReportKey] = React.useState<string>('TripSummary');
   const [result, setResult] = React.useState<IReportResult | undefined>();
@@ -78,7 +77,6 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
   const [error, setError] = React.useState<unknown>(bootstrapError);
 
   const [vehicleTypes, setVehicleTypes] = React.useState<IVehicleType[]>([]);
-  const [properties, setProperties] = React.useState<IProperty[]>([]);
 
   const maySeeRestricted = user ? hasRole(user, 'admin', 'coordinator') : false;
 
@@ -93,13 +91,9 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
 
     (async () => {
       try {
-        const [types, props] = await Promise.all([
-          services.master.getVehicleTypes(),
-          services.master.getProperties(),
-        ]);
+        const types = await services.master.getVehicleTypes();
         if (cancelled) return;
         setVehicleTypes(types);
-        setProperties(props);
       } catch (e) {
         if (!cancelled) setError(e);
       }
@@ -121,7 +115,6 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
       const filter: IReportFilter = {
         from: new Date(`${from}T00:00:00Z`),
         to: new Date(`${to}T23:59:59Z`),
-        propertyId: propertyId ? parseInt(propertyId, 10) : undefined,
         requestType: (requestType || undefined) as RequestType | undefined,
         vehicleTypeId: vehicleTypeId ? parseInt(vehicleTypeId, 10) : undefined,
       };
@@ -214,20 +207,13 @@ export const Reports: React.FC<IReportsProps> = ({ services, user, bootstrapErro
               />
             </FormRow>
 
-            <FormRow label="Property" htmlFor="report-property">
-              <Select
-                id="report-property"
-                value={propertyId}
-                onChange={(e) => setPropertyId(e.target.value)}
-              >
-                <option value="">All properties</option>
-                {properties.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title}
-                  </option>
-                ))}
-              </Select>
-            </FormRow>
+            {/*
+              NO PROPERTY FILTER. Allocation stopped being scoped by property
+              when the solution moved to a single driver pool, so filtering a
+              report by it narrowed the rows without narrowing anything the
+              reader cares about. The column is still written on the request
+              for reference; it is simply not a lens on these reports.
+            */}
 
             <FormRow label="Request type" htmlFor="report-request-type">
               <Select

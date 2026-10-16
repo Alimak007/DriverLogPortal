@@ -1,3 +1,11 @@
 {
-  "extends": "./node_modules/@microsoft/spfx-web-build-rig/profiles/default/tsconfig-base.json"
+  "extends": "./node_modules/@microsoft/spfx-web-build-rig/profiles/default/tsconfig-base.json",
+  "compilerOptions": {
+    // The rig pins `types` to jest + webpack-env, which excludes everything
+    // else in node_modules/@types. `google.maps` has to be named explicitly or
+    // the whole `google` namespace is unresolvable - the Maps API is a global
+    // loaded by a script tag, not an imported module, so there is nothing else
+    // to pull the types in.
+    "types": ["jest", "webpack-env", "google.maps"]
+  }
 }

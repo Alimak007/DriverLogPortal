@@ -2,23 +2,27 @@
  * Pick a pickup and a destination anywhere in the UAE.
  *
  * Replaces the Locations list entirely: the requester searches live with
- * TomTom and drops a pin, and what we store is free text plus coordinates.
+ * Google Places and drops a pin, and what we store is free text plus
+ * coordinates.
  *
  * TWO SEARCHES, TWO PINS, ONE MAP. Pickup is green, drop-off is red, and both
  * are draggable.
  */
 
-import * as L from 'leaflet';
 import * as React from 'react';
 import { FormRow, Notice, TextArea, TextField } from '../../../common/components/Shared';
 import { Icon } from '../../../common/components/Icons';
 import {
-  addTileLayer,
+  addMarker,
+  createMap,
   DROPOFF_FILL,
-  ensureLeafletCss,
-  makePin,
+  ensureGoogleMaps,
+  fitTwoPoints,
+  hasNewPlaces,
+  IMapMarker,
   PICKUP_FILL,
-} from './leafletBase';
+  refreshMapSize,
+} from './googleMapsBase';
 import styles from './BookARide.module.scss';
 
 /** What a chosen place looks like once it reaches the request. */
@@ -31,7 +35,9 @@ export interface IPlace {
 
 export interface IMapPickerProps {
   apiKey: string;
-  /** True when the wizard is actually showing this step. Drives invalidateSize. */
+  /** Cloud Map ID. Optional - without it the classic marker is used. */
+  mapId?: string;
+  /** True when the wizard is actually showing this step. Drives the resize. */
   isActive: boolean;
   centre: { lat: number; lng: number };
   radiusKm: number;
@@ -48,94 +54,178 @@ export interface IMapPickerProps {
 }
 
 // -----------------------------------------------------------------------------
-// Leaflet setup
-// -----------------------------------------------------------------------------
-
-
-// -----------------------------------------------------------------------------
-// TomTom
+// Google Places
 // -----------------------------------------------------------------------------
 
 interface ISuggestion {
-  text: string;
-  placeId?: string;
-  lat: number;
-  lng: number;
+  key: string;
+  primary: string;
+  secondary?: string;
+  /** Held so the coordinates can be fetched only if this one is chosen. */
+  prediction: google.maps.places.PlacePrediction;
 }
 
-type SearchState = 'idle' | 'searching' | 'none' | 'forbidden' | 'quota' | 'error';
+type SearchState =
+  | 'idle'
+  | 'searching'
+  | 'resolving'
+  | 'none'
+  | 'forbidden'
+  | 'quota'
+  | 'error';
 
 /**
- * Fuzzy Search, not Geocoding.
+ * A locationBias circle is capped at 50 km by the API.
  *
- * Geocoding expects a well-formed address; fuzzy search copes with the
- * partial, misspelled input people actually type.
- *
- * NOTE: a plain fetch, deliberately. SPHttpClient attaches SharePoint bearer
- * tokens and request digests - pointing it at api.tomtom.com would send the
- * tenant's auth material to a third party. That is a security incident, not a
- * config mistake. Never use SPHttpClient for an external host.
+ * AllocationRules can legitimately hold a wider operating radius than that,
+ * and passing it through unclamped makes the whole request fail rather than
+ * widening the bias. Clamp, and let the bias be approximate - it only ranks
+ * results, it does not restrict them. `includedRegionCodes` does the
+ * restricting.
  */
-async function tomtomSearch(
-  apiKey: string,
+const MAX_BIAS_RADIUS_M = 50000;
+
+/** Longest place text we will store, matching the list column. */
+const MAX_TEXT = 255;
+
+/**
+ * Turn whatever Google knows about a place into one line a driver can act on.
+ *
+ * `formattedAddress` alone loses the name - "Marina Mall" becomes a street and
+ * a district, which is worse for a driver, not better. `displayName` alone
+ * loses the location. Where the name is not already inside the address, both
+ * are kept.
+ */
+function placeText(place: google.maps.places.Place, fallback: string): string {
+  const name = place.displayName ?? undefined;
+  const address = place.formattedAddress ?? undefined;
+
+  let text: string;
+  if (name && address) {
+    text = address.indexOf(name) === -1 ? `${name}, ${address}` : address;
+  } else {
+    text = address ?? name ?? fallback;
+  }
+
+  return text.length > MAX_TEXT ? text.slice(0, MAX_TEXT) : text;
+}
+
+/** Map a thrown Places error onto the banner states the field already has. */
+function classifyError(e: unknown): SearchState {
+  const message = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  if (
+    message.indexOf('denied') !== -1 ||
+    message.indexOf('not authorized') !== -1 ||
+    message.indexOf('referer') !== -1
+  ) {
+    return 'forbidden';
+  }
+  if (message.indexOf('quota') !== -1 || message.indexOf('over_query_limit') !== -1) {
+    return 'quota';
+  }
+  return 'error';
+}
+
+/**
+ * Autocomplete, not a text search.
+ *
+ * Predictions are cheap and carry NO COORDINATES - that is the design, not an
+ * omission. The coordinates cost a separate Place Details call, which is why
+ * it is deferred to `resolvePlace` below and only ever runs for the one
+ * suggestion the requester actually picks. The old TomTom call returned
+ * positions for all five results whether they were wanted or not.
+ */
+async function searchPlaces(
   query: string,
   centre: { lat: number; lng: number },
   radiusKm: number,
+  sessionToken: google.maps.places.AutocompleteSessionToken,
 ): Promise<{ state: SearchState; results: ISuggestion[] }> {
-  const url =
-    `https://api.tomtom.com/search/2/search/${encodeURIComponent(query)}.json` +
-    `?key=${encodeURIComponent(apiKey)}` +
-    `&countrySet=AE` +
-    `&lat=${centre.lat}&lon=${centre.lng}` +
-    `&radius=${Math.round(radiusKm * 1000)}` +
-    `&limit=5&typeahead=true`;
+  if (!hasNewPlaces()) return { state: 'forbidden', results: [] };
 
-  let res: Response;
   try {
-    res = await fetch(url);
+    const { suggestions } =
+      await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+        input: query,
+        sessionToken,
+        includedRegionCodes: ['ae'],
+        locationBias: {
+          center: centre,
+          radius: Math.min(Math.round(radiusKm * 1000), MAX_BIAS_RADIUS_M),
+        },
+        language: 'en',
+      });
+
+    const results: ISuggestion[] = [];
+    suggestions.forEach((s) => {
+      const prediction = s.placePrediction;
+      if (!prediction) return;
+      results.push({
+        key: prediction.placeId,
+        primary: prediction.mainText?.text ?? prediction.text.text,
+        secondary: prediction.secondaryText?.text,
+        prediction,
+      });
+    });
+
+    return { state: results.length === 0 ? 'none' : 'idle', results };
   } catch (e) {
-    console.error('[FleetPortal] TomTom search unreachable', e);
-    return { state: 'error', results: [] };
+    console.error('[FleetPortal] Google Places autocomplete failed', e);
+    return { state: classifyError(e), results: [] };
   }
-
-  if (res.status === 403) {
-    console.error('[FleetPortal] TomTom returned 403. Check the key and its referrer restriction.');
-    return { state: 'forbidden', results: [] };
-  }
-  if (res.status === 429) {
-    console.error('[FleetPortal] TomTom returned 429 - the daily quota is spent.');
-    return { state: 'quota', results: [] };
-  }
-  if (!res.ok) {
-    console.error('[FleetPortal] TomTom search failed', res.status);
-    return { state: 'error', results: [] };
-  }
-
-  const body: { results?: { id?: string; address?: { freeformAddress?: string }; position?: { lat: number; lon: number } }[] } =
-    await res.json();
-
-  const results: ISuggestion[] = (body.results ?? [])
-    .filter((r) => r.position && r.address?.freeformAddress)
-    .map((r) => ({
-      text: r.address?.freeformAddress as string,
-      placeId: r.id,
-      lat: (r.position as { lat: number }).lat,
-      lng: (r.position as { lon: number }).lon,
-    }));
-
-  return { state: results.length === 0 ? 'none' : 'idle', results };
 }
 
-/** Make the text match the pin after a drag. */
-async function reverseGeocode(apiKey: string, lat: number, lng: number): Promise<string | undefined> {
+/**
+ * Turn the chosen prediction into coordinates.
+ *
+ * This is the call that closes the autocomplete session for billing, which is
+ * why the session token must be discarded by the caller afterwards.
+ */
+async function resolvePlace(
+  suggestion: ISuggestion,
+): Promise<{ place?: IPlace; state: SearchState }> {
   try {
-    const res = await fetch(
-      `https://api.tomtom.com/search/2/reverseGeocode/${lat},${lng}.json?key=${encodeURIComponent(apiKey)}`,
+    const place = suggestion.prediction.toPlace();
+    await place.fetchFields({ fields: ['location', 'formattedAddress', 'displayName'] });
+
+    const location = place.location;
+    if (!location) return { state: 'error' };
+
+    return {
+      state: 'idle',
+      place: {
+        text: placeText(place, suggestion.primary),
+        placeId: place.id,
+        lat: location.lat(),
+        lng: location.lng(),
+      },
+    };
+  } catch (e) {
+    console.error('[FleetPortal] Google Place details failed', e);
+    return { state: classifyError(e) };
+  }
+}
+
+/**
+ * Make the text match the pin after a drag.
+ *
+ * Uses the JS Geocoder, NOT the Geocoding web service - a referrer-restricted
+ * key is refused outright by the REST endpoint. If the Geocoding API is not
+ * enabled on the key this returns undefined and the caller falls back to the
+ * raw coordinates, so a dragged pin still books; it just reads as numbers.
+ */
+async function reverseGeocode(lat: number, lng: number): Promise<string | undefined> {
+  try {
+    const geocoder = new google.maps.Geocoder();
+    const { results } = await geocoder.geocode({ location: { lat, lng } });
+    const address = results[0]?.formatted_address;
+    return address && address.length > MAX_TEXT ? address.slice(0, MAX_TEXT) : address;
+  } catch (e) {
+    console.warn(
+      '[FleetPortal] Reverse geocode failed - the pin will read as coordinates. ' +
+        'Check that the Geocoding API is enabled on the key.',
+      e,
     );
-    if (!res.ok) return undefined;
-    const body: { addresses?: { address?: { freeformAddress?: string } }[] } = await res.json();
-    return body.addresses?.[0]?.address?.freeformAddress;
-  } catch {
     return undefined;
   }
 }
@@ -148,7 +238,8 @@ function PlaceSearch({
   id,
   label,
   placeholder,
-  apiKey,
+  ready,
+  failed,
   centre,
   radiusKm,
   value,
@@ -160,7 +251,9 @@ function PlaceSearch({
   id: string;
   label: string;
   placeholder: string;
-  apiKey: string;
+  ready: boolean;
+  /** The API will not arrive at all - as opposed to not having arrived yet. */
+  failed: boolean;
   centre: { lat: number; lng: number };
   radiusKm: number;
   value?: IPlace;
@@ -175,8 +268,21 @@ function PlaceSearch({
   const [open, setOpen] = React.useState(false);
   const seq = React.useRef(0);
 
+  /**
+   * One session token spans the whole typing run and the Place Details call
+   * that ends it. Reusing a token across sessions, or omitting it, makes
+   * Google bill every keystroke as its own request - which is the single
+   * easiest way to run up a Places bill on a debounced field like this one.
+   */
+  const session = React.useRef<google.maps.places.AutocompleteSessionToken | undefined>(
+    undefined,
+  );
+
+  const centreLat = centre.lat;
+  const centreLng = centre.lng;
+
   // DEBOUNCED AT 300 ms, and nothing under 3 characters. Without both you fire
-  // a request per keystroke and burn the free tier on prefixes.
+  // a request per keystroke and burn the quota on prefixes.
   React.useEffect(() => {
     const q = query.trim();
     if (q.length < 3) {
@@ -184,15 +290,32 @@ function PlaceSearch({
       setState('idle');
       return undefined;
     }
-    if (!apiKey) {
+    if (failed) {
       setState('forbidden');
+      return undefined;
+    }
+    /**
+     * Still loading, not broken.
+     *
+     * Leaflet was bundled, so the search was usable the instant the step
+     * rendered. Google arrives over the network, and someone who types
+     * straight away would otherwise be told location search is unavailable
+     * when it is merely half a second away. Hold the spinner instead - `ready`
+     * is in the dependency list, so this effect re-runs and searches for real
+     * the moment the API lands.
+     */
+    if (!ready) {
+      setState('searching');
       return undefined;
     }
 
     const mine = ++seq.current;
     setState('searching');
     const handle = window.setTimeout(() => {
-      tomtomSearch(apiKey, q, centre, radiusKm)
+      if (!session.current) {
+        session.current = new google.maps.places.AutocompleteSessionToken();
+      }
+      searchPlaces(q, { lat: centreLat, lng: centreLng }, radiusKm, session.current)
         .then((r) => {
           // A slow earlier request must not overwrite a newer one.
           if (mine !== seq.current) return;
@@ -204,7 +327,26 @@ function PlaceSearch({
     }, 300);
 
     return () => window.clearTimeout(handle);
-  }, [query, apiKey, centre, radiusKm]);
+  }, [query, ready, failed, centreLat, centreLng, radiusKm]);
+
+  const choose = (suggestion: ISuggestion): void => {
+    setState('resolving');
+    resolvePlace(suggestion)
+      .then((r) => {
+        // The session ends with the details call, win or lose.
+        session.current = undefined;
+        if (!r.place) {
+          setState(r.state);
+          return;
+        }
+        onPick(r.place);
+        setState('idle');
+        setQuery('');
+        setResults([]);
+        setOpen(false);
+      })
+      .catch(() => setState('error'));
+  };
 
   const message =
     state === 'none'
@@ -216,6 +358,8 @@ function PlaceSearch({
           : state === 'error'
             ? 'Location search could not be reached. You can still drag the pin on the map.'
             : undefined;
+
+  const busy = state === 'searching' || state === 'resolving';
 
   return (
     <div className={styles.placeField}>
@@ -229,9 +373,7 @@ function PlaceSearch({
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setOpen(true)}
           />
-          {state === 'searching' ? (
-            <span className={styles.placeSpinner} aria-hidden="true" />
-          ) : undefined}
+          {busy ? <span className={styles.placeSpinner} aria-hidden="true" /> : undefined}
         </div>
       </FormRow>
 
@@ -245,6 +387,10 @@ function PlaceSearch({
             onClick={() => {
               onPick(undefined);
               setQuery('');
+              // Abandoning a choice ends that autocomplete session too.
+              // Carrying the token into the next one makes Google bill every
+              // keystroke separately instead of as one session.
+              session.current = undefined;
             }}
           >
             Change
@@ -256,18 +402,20 @@ function PlaceSearch({
         <ul className={styles.placeList} aria-label={`Matches for ${label}`}>
           {message ? <li className={styles.placeEmpty}>{message}</li> : undefined}
           {results.map((r) => (
-            <li key={`${r.placeId ?? ''}${r.lat},${r.lng}`}>
+            <li key={r.key}>
               <button
                 type="button"
                 className={styles.placeOption}
-                onClick={() => {
-                  onPick({ text: r.text, placeId: r.placeId, lat: r.lat, lng: r.lng });
-                  setQuery('');
-                  setOpen(false);
-                }}
+                disabled={state === 'resolving'}
+                onClick={() => choose(r)}
               >
                 <Icon name="pin" />
-                <span>{r.text}</span>
+                <span>
+                  {r.primary}
+                  {r.secondary ? (
+                    <span className={styles.placeOptionMeta}>{r.secondary}</span>
+                  ) : undefined}
+                </span>
               </button>
             </li>
           ))}
@@ -299,62 +447,79 @@ function PlaceSearch({
 
 export function MapPicker(props: IMapPickerProps): JSX.Element {
   const {
-    apiKey, isActive, centre, radiusKm,
+    apiKey, mapId, isActive, centre, radiusKm,
     pickup, dropOff, pickupNotes, dropOffNotes,
     onPickup, onDropOff, onPickupNotes, onDropOffNotes,
   } = props;
 
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const mapRef = React.useRef<L.Map | undefined>(undefined);
-  const pickupMarker = React.useRef<L.Marker | undefined>(undefined);
-  const dropOffMarker = React.useRef<L.Marker | undefined>(undefined);
-  const [tilesFailed, setTilesFailed] = React.useState(false);
-  const [usingFallbackTiles, setUsingFallbackTiles] = React.useState(false);
+  const mapRef = React.useRef<google.maps.Map | undefined>(undefined);
+  const pickupMarker = React.useRef<IMapMarker | undefined>(undefined);
+  const dropOffMarker = React.useRef<IMapMarker | undefined>(undefined);
 
-  // Keep the latest callbacks reachable from the Leaflet event handlers, which
-  // are bound once and would otherwise close over the first render's props.
+  /**
+   * Leaflet was bundled, so the map existed the moment the step rendered.
+   * Google loads over the network, so there is now a real waiting state and
+   * the step has to say so rather than showing an empty grey box.
+   */
+  const [ready, setReady] = React.useState(false);
+  const [mapFailed, setMapFailed] = React.useState(false);
+
+  // Keep the latest callbacks reachable from the marker handlers, which are
+  // bound once and would otherwise close over the first render's props.
   const onPickupRef = React.useRef(onPickup);
   const onDropOffRef = React.useRef(onDropOff);
   onPickupRef.current = onPickup;
   onDropOffRef.current = onDropOff;
 
-  // --- create once, and DESTROY ON UNMOUNT ---------------------------------
+  // --- load the API once ---------------------------------------------------
   React.useEffect(() => {
-    ensureLeafletCss();
-    if (!containerRef.current || mapRef.current) return undefined;
+    let cancelled = false;
+    ensureGoogleMaps(apiKey)
+      .then(() => {
+        if (!cancelled) setReady(true);
+      })
+      .catch((e: Error) => {
+        console.error('[FleetPortal] Google Maps could not load', e);
+        if (!cancelled) setMapFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey]);
 
-    const map = L.map(containerRef.current, {
-      center: [centre.lat, centre.lng],
+  // --- create the map once the API is there, and tear it down on unmount ---
+  React.useEffect(() => {
+    if (!ready || !containerRef.current || mapRef.current) return undefined;
+
+    mapRef.current = createMap({
+      container: containerRef.current,
+      centre,
       zoom: 11,
-      zoomControl: true,
+      mapId,
     });
-
-    addTileLayer(map, apiKey, {
-      onFallback: () => setUsingFallbackTiles(true),
-      onFailure: () => setTilesFailed(true),
-    });
-
-    mapRef.current = map;
 
     return () => {
-      // Without this, coming back to the step a second time throws
-      // "Map container is already initialized" and the step renders blank.
-      // Grey tiles look broken; this one looks like a crash.
-      map.remove();
-      mapRef.current = undefined;
+      // Google has no map.remove(). Detach the markers and their listeners,
+      // then let React discard the container - leaving listeners bound to a
+      // removed node is how these leak across wizard steps.
+      if (pickupMarker.current) pickupMarker.current.remove();
+      if (dropOffMarker.current) dropOffMarker.current.remove();
       pickupMarker.current = undefined;
       dropOffMarker.current = undefined;
+      if (mapRef.current) google.maps.event.clearInstanceListeners(mapRef.current);
+      mapRef.current = undefined;
     };
     // Created once. The centre and key do not change within a booking.
-  }, []);
+  }, [ready]);
 
   // --- the map has no size until the step is actually visible --------------
   React.useEffect(() => {
     if (!isActive || !mapRef.current) return undefined;
     const map = mapRef.current;
-    const handle = window.setTimeout(() => map.invalidateSize(), 0);
+    const handle = window.setTimeout(() => refreshMapSize(map), 0);
     return () => window.clearTimeout(handle);
-  }, [isActive]);
+  }, [isActive, ready]);
 
   // --- keep the pins in step with the chosen places ------------------------
   React.useEffect(() => {
@@ -362,7 +527,7 @@ export function MapPicker(props: IMapPickerProps): JSX.Element {
     if (!map) return;
 
     const sync = (
-      ref: React.MutableRefObject<L.Marker | undefined>,
+      ref: React.MutableRefObject<IMapMarker | undefined>,
       place: IPlace | undefined,
       fill: string,
       label: string,
@@ -370,32 +535,36 @@ export function MapPicker(props: IMapPickerProps): JSX.Element {
     ): void => {
       if (!place) {
         if (ref.current) {
-          map.removeLayer(ref.current);
+          ref.current.remove();
           ref.current = undefined;
         }
         return;
       }
       if (!ref.current) {
-        const marker = L.marker([place.lat, place.lng], {
-          icon: makePin(fill, label),
+        ref.current = addMarker({
+          map,
+          lat: place.lat,
+          lng: place.lng,
+          fill,
+          label,
           draggable: true,
-          title: label,
-        }).addTo(map);
-
-        marker.on('dragend', () => {
-          const pos = marker.getLatLng();
-          // Reverse geocode so the text matches where the pin now is. There is
-          // no id on a reverse geocode, so PlaceId is left empty - expected,
-          // and the column is optional.
-          reverseGeocode(apiKey, pos.lat, pos.lng)
-            .then((text) =>
-              commit({ text: text ?? `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`, lat: pos.lat, lng: pos.lng }),
-            )
-            .catch(() => undefined);
+          onDragEnd: (lat, lng) => {
+            // Reverse geocode so the text matches where the pin now is. There
+            // is no place id on a reverse geocode, so PlaceId is left empty -
+            // expected, and the column is optional.
+            reverseGeocode(lat, lng)
+              .then((text) =>
+                commit({
+                  text: text ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+                  lat,
+                  lng,
+                }),
+              )
+              .catch(() => undefined);
+          },
         });
-        ref.current = marker;
       } else {
-        ref.current.setLatLng([place.lat, place.lng]);
+        ref.current.setPosition(place.lat, place.lng);
       }
     };
 
@@ -403,34 +572,43 @@ export function MapPicker(props: IMapPickerProps): JSX.Element {
     sync(dropOffMarker, dropOff, DROPOFF_FILL, 'Destination', (p) => onDropOffRef.current(p));
 
     if (pickup && dropOff) {
-      map.fitBounds(
-        L.latLngBounds([
-          [pickup.lat, pickup.lng],
-          [dropOff.lat, dropOff.lng],
-        ]),
-        { padding: [40, 40], maxZoom: 15 },
+      fitTwoPoints(
+        map,
+        { lat: pickup.lat, lng: pickup.lng },
+        { lat: dropOff.lat, lng: dropOff.lng },
+        40,
+        15,
       );
     } else if (pickup) {
-      map.setView([pickup.lat, pickup.lng], 14);
+      map.setCenter({ lat: pickup.lat, lng: pickup.lng });
+      map.setZoom(14);
     } else if (dropOff) {
-      map.setView([dropOff.lat, dropOff.lng], 14);
+      map.setCenter({ lat: dropOff.lat, lng: dropOff.lng });
+      map.setZoom(14);
     }
-  }, [pickup, dropOff, apiKey]);
+  }, [pickup, dropOff, ready]);
 
   return (
     <div className={styles.mapPicker}>
       <div className={styles.mapPane}>
-        <div ref={containerRef} className={styles.mapCanvas} role="application" aria-label="Pickup and destination map" />
-        {tilesFailed ? (
-          // The map is an aid; the coordinates are the data. A tile failure
+        <div
+          ref={containerRef}
+          className={styles.mapCanvas}
+          role="application"
+          aria-label="Pickup and destination map"
+        />
+        {mapFailed ? (
+          // The map is an aid; the coordinates are the data. A map failure
           // must never block a booking that already has both pins.
           <div className={styles.mapFallback}>
             The map could not load, but your chosen places are still saved.
           </div>
+        ) : !ready ? (
+          <div className={styles.mapFallback}>Loading the map&hellip;</div>
         ) : undefined}
         <p className={styles.mapHint}>
-          Search below, or drag a pin to adjust it. Green is the pickup, red is the destination.
-          {usingFallbackTiles ? ' Showing OpenStreetMap - the TomTom key is not enabled for maps.' : ''}
+          Search below, or drag a pin to adjust it. Green is the pickup, red is the
+          destination.
         </p>
       </div>
 
@@ -439,7 +617,8 @@ export function MapPicker(props: IMapPickerProps): JSX.Element {
           id="pickup-search"
           label="Pickup point"
           placeholder="Search a place, building or road"
-          apiKey={apiKey}
+          ready={ready}
+          failed={mapFailed}
           centre={centre}
           radiusKm={radiusKm}
           value={pickup}
@@ -452,7 +631,8 @@ export function MapPicker(props: IMapPickerProps): JSX.Element {
           id="dropoff-search"
           label="Destination"
           placeholder="Search a place, building or road"
-          apiKey={apiKey}
+          ready={ready}
+          failed={mapFailed}
           centre={centre}
           radiusKm={radiusKm}
           value={dropOff}
@@ -465,7 +645,7 @@ export function MapPicker(props: IMapPickerProps): JSX.Element {
 
       {!apiKey ? (
         <Notice tone="attention">
-          No TomTom key is configured, so the map and search are unavailable.
+          No Google Maps key is configured, so the map and search are unavailable.
           Set it in the web part property pane.
         </Notice>
       ) : undefined}

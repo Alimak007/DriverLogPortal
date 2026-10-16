@@ -3,7 +3,7 @@
   "solution": {
     "name": "Fleet Booking and Dispatch Portal",
     "id": "e537e242-e3bd-45fa-b820-fa31c1cdd8c8",
-    "version": "1.0.0.0",
+    "version": "1.3.0.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,

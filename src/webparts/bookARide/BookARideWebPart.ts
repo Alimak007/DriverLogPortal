@@ -4,17 +4,18 @@ import {
   PropertyPaneTextField,
 } from '@microsoft/sp-property-pane';
 import * as React from 'react';
-import * as ReactDom from 'react-dom';
 import { APP_CONFIG } from '../../common/config/AppConfig';
 import {
   FleetWebPartBase,
   IFleetWebPartProps,
 } from '../../common/webpart/FleetWebPartBase';
+import { FleetWebPartKey } from '../../common/webpart/access';
 import BookARide, { IBookARideProps } from './components/BookARide';
 
 export interface IBookARideWebPartProps extends IFleetWebPartProps {
   defaultPropertyId: number;
-  tomtomApiKey: string;
+  googleMapsApiKey: string;
+  googleMapsMapId: string;
   processingPollMs: number;
 }
 
@@ -30,16 +31,17 @@ export default class BookARideWebPart extends FleetWebPartBase<IBookARideWebPart
       myBookingsUrl: `${this.context.pageContext.web.absoluteUrl}${APP_CONFIG.pages.myBookings}`,
       // The pane wins where a site has its own key; otherwise the shared
       // default in APP_CONFIG applies, so the form works with no setup.
-      tomtomApiKey:
-        String(this.properties.tomtomApiKey ?? '').trim() || APP_CONFIG.tomtom.apiKey,
+      googleMapsApiKey:
+        String(this.properties.googleMapsApiKey ?? '').trim() || APP_CONFIG.googleMaps.apiKey,
+      googleMapsMapId:
+        String(this.properties.googleMapsMapId ?? '').trim() || APP_CONFIG.googleMaps.mapId,
     });
 
-    ReactDom.render(element, this.domElement);
+    this.renderElement(element);
   }
 
-  protected onDispose(): void {
-    ReactDom.unmountComponentAtNode(this.domElement);
-    super.onDispose();
+  protected accessKey(): FleetWebPartKey {
+    return 'bookARide';
   }
 
   protected settingsGroups(): IPropertyPaneGroup[] {
@@ -53,13 +55,22 @@ export default class BookARideWebPart extends FleetWebPartBase<IBookARideWebPart
               'The PropertyMaster item ID this page books against. Leave at 0 to use ' +
               "the signed-in user's own property.",
           }),
-          PropertyPaneTextField('tomtomApiKey', {
-            label: 'TomTom API key',
+          PropertyPaneTextField('googleMapsApiKey', {
+            label: 'Google Maps API key',
             description:
-              'Optional. Overrides the shared key in APP_CONFIG for this site. ' +
-              'Either way the key ships in the bundle and IS extractable, so it ' +
-              'must be restricted by HTTP referrer in the TomTom portal and have ' +
-              'a daily usage alert set.',
+              'Overrides the shared key in APP_CONFIG for this site - use this ' +
+              "for the client's own key. Either way the key ships in the bundle " +
+              'and IS extractable, so it must be restricted by HTTP referrer AND ' +
+              'by API (Maps JavaScript, Places New, Geocoding), with a budget ' +
+              'alert set. This key is billed, so an unrestricted one is a bill, ' +
+              'not a rate limit.',
+          }),
+          PropertyPaneTextField('googleMapsMapId', {
+            label: 'Google Maps Map ID',
+            description:
+              'Optional. Enables Advanced Markers and cloud-based map styling. ' +
+              'Without one the map still works but uses the deprecated classic ' +
+              'marker. Create it under Google Maps Platform > Map management.',
           }),
           PropertyPaneSlider('processingPollMs', {
             label: 'Processing screen refresh (seconds)',

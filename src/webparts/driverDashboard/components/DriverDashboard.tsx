@@ -257,18 +257,47 @@ export const DriverDashboard: React.FC<IDriverDashboardProps> = ({
 
   const advance = async (card: ITripCard, to: TripStatus): Promise<void> => {
     if (!services) return;
-    const prompt = odometerPromptFor(to);
+    const prompt = odometerPromptFor(to, card.trip.openingReading !== undefined);
     const raw = odometer[card.trip.id];
-    const reading = prompt ? parseInt(raw ?? '', 10) : undefined;
+    const parsed = prompt ? parseInt(raw ?? '', 10) : NaN;
+    const typedSomething = raw !== undefined && raw.trim().length > 0;
 
-    if (prompt && (raw === undefined || raw.trim().length === 0 || isNaN(reading as number))) {
+    /**
+     * ALL OR NOTHING - see odometerPromptFor.
+     *
+     * Opening is offered and may be skipped. Closing only appears when an
+     * opening reading exists, and is then required: half a pair cannot be
+     * subtracted into a distance, and storing one would look like data while
+     * being useless.
+     */
+    if (prompt?.required && !typedSomething) {
       setError(
         new Error(
-          `Enter the ${prompt} odometer reading before tapping ${TAP_LABEL[to] ?? to}.`,
+          'You entered an opening reading for this trip, so the closing reading ' +
+            'is needed to complete it.',
         ),
       );
       return;
     }
+
+    // A typed but unparseable value is always rejected. Silently discarding
+    // something the driver deliberately entered is worse than asking again.
+    if (prompt && typedSomething && isNaN(parsed)) {
+      setError(new Error('That odometer reading is not a number. Clear it or correct it.'));
+      return;
+    }
+
+    if (prompt?.required && parsed <= (card.trip.openingReading ?? 0)) {
+      setError(
+        new Error(
+          `The closing reading must be higher than the opening one ` +
+            `(${card.trip.openingReading}).`,
+        ),
+      );
+      return;
+    }
+
+    const reading = prompt && typedSomething && !isNaN(parsed) ? parsed : undefined;
 
     setBusyId(card.trip.id);
     setError(undefined);
@@ -464,10 +493,20 @@ export const DriverDashboard: React.FC<IDriverDashboardProps> = ({
                       <Fact icon="flag" label="Finished">
                         {formatTime(card.trip.actualDropTime)}
                       </Fact>
+                      {/*
+                        Odometer first, planned route second. Since the reading
+                        became optional most completed trips have no delta, and
+                        showing nothing at all would read as data loss. The
+                        "about" is what keeps the two apart on screen.
+                      */}
                       {card.trip.openingReading !== undefined &&
                       card.trip.closingReading !== undefined ? (
                         <Fact icon="navigation" label="Distance">
                           {card.trip.closingReading - card.trip.openingReading} km
+                        </Fact>
+                      ) : card.request.estimatedDistanceKm !== undefined ? (
+                        <Fact icon="navigation" label="Distance">
+                          about {card.request.estimatedDistanceKm} km
                         </Fact>
                       ) : undefined}
                     </div>
@@ -667,7 +706,11 @@ function TripCardView({ card, busy, odometer, onOdometer, onAdvance, onCancel }:
   onCancel: () => void;
 }): JSX.Element {
   const next = nextTripStatus(card.trip.tripStatus);
-  const prompt = next ? odometerPromptFor(next) : undefined;
+  // Undefined here means the field is HIDDEN, not merely optional - which is
+  // what happens at "Complete" when the driver skipped the opening reading.
+  const prompt = next
+    ? odometerPromptFor(next, card.trip.openingReading !== undefined)
+    : undefined;
 
   return (
     <article className={styles.jobCard}>
@@ -693,14 +736,32 @@ function TripCardView({ card, busy, odometer, onOdometer, onAdvance, onCancel }:
             {card.request.noOfPax ?? '—'}
           </Fact>
         ) : undefined}
+        {/*
+          How far the job is, before it starts. The driver used to infer this
+          from their own odometer; now the booking carries it. Pickup to
+          drop-off only, so it reads as "about" - the run out to the pickup is
+          the driver's own and nothing here knows it.
+        */}
+        {card.request.estimatedDistanceKm !== undefined ? (
+          <Fact icon="navigation" label="Trip length">
+            about {card.request.estimatedDistanceKm} km
+            {card.request.estimatedDurationMinutes !== undefined
+              ? ` · ${card.request.estimatedDurationMinutes} min`
+              : ''}
+          </Fact>
+        ) : undefined}
       </div>
 
       {prompt ? (
         <div className={styles.odometer}>
           <FormRow
-            label={`${prompt === 'opening' ? 'Opening' : 'Closing'} odometer reading`}
-            required
-            hint="Goes straight into the trip sheet, so you do not re-key it later."
+            label={`${prompt.field === 'opening' ? 'Opening' : 'Closing'} odometer reading`}
+            required={prompt.required}
+            hint={
+              prompt.required
+                ? `Needed, because you entered an opening reading of ${card.trip.openingReading}.`
+                : 'Optional. Skip it and the trip sheet uses the distance from the map. Enter it and you will be asked for the closing reading too.'
+            }
           >
             <TextField
               type="number"

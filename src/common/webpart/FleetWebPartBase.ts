@@ -12,10 +12,14 @@ import {
   IPropertyPaneGroup,
 } from '@microsoft/sp-property-pane';
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
+import * as React from 'react';
+import * as ReactDom from 'react-dom';
+import { AccessNotice } from '../components/Shared';
 import { IServices } from '../services/IServices';
 import { ICurrentUser } from '../services/IServices';
 import { bootstrap } from '../services/ServiceFactory';
 import { applyPageChrome, removePageChrome } from '../styles/pageChrome';
+import { FleetWebPartKey, mayOpen, WEB_PART_ACCESS } from './access';
 
 /**
  * Common web part properties.
@@ -70,7 +74,16 @@ export abstract class FleetWebPartBase<
     applyPageChrome(this.displayMode !== DisplayMode.Edit);
   }
 
+  /**
+   * Unmounting belongs here now that rendering does.
+   *
+   * It used to be repeated in all five web parts. Once renderElement moved the
+   * render into this class, leaving the unmount behind meant the pair was
+   * split across files - which is both a lint failure and the shape a leak
+   * hides in. Subclasses no longer override this at all.
+   */
   protected onDispose(): void {
+    ReactDom.unmountComponentAtNode(this.domElement);
     removePageChrome();
     super.onDispose();
   }
@@ -80,6 +93,56 @@ export abstract class FleetWebPartBase<
   }
 
   protected abstract settingsGroups(): IPropertyPaneGroup[];
+
+  /** Which entry in WEB_PART_ACCESS governs this web part. */
+  protected abstract accessKey(): FleetWebPartKey;
+
+  /**
+   * Render the web part, or the access notice in its place.
+   *
+   * Every web part calls this instead of ReactDom.render, so the check cannot
+   * be forgotten by a new one - the abstract accessKey() above makes it a
+   * compile error to add a web part without declaring who it is for.
+   *
+   * THREE DELIBERATE EXCEPTIONS, each of which fails OPEN:
+   *
+   *   1. A failed bootstrap. currentUser is undefined because the lookup
+   *      broke, not because the person lacks a role. The component already
+   *      renders that error, and replacing it with "not available to you"
+   *      would send someone chasing a permission problem that does not exist.
+   *   2. A site collection administrator. Whoever builds these pages has to
+   *      be able to see what they are placing, and locking the owner out of
+   *      their own site to enforce a navigation aid is a poor trade.
+   *   3. Page edit mode is NOT an exception - an author sees exactly what
+   *      their audience will see. The property pane still opens either way,
+   *      so a page can be configured from behind the notice.
+   */
+  protected renderElement(element: React.ReactElement): void {
+    const key = this.accessKey();
+
+    const bootstrapFailed = this.bootstrapError !== undefined || !this.currentUser;
+    const legacy = this.context.pageContext.legacyPageContext as
+      | { isSiteAdmin?: boolean }
+      | undefined;
+    const isSiteAdmin = legacy?.isSiteAdmin === true;
+
+    const allowed =
+      bootstrapFailed || isSiteAdmin || mayOpen(this.currentUser?.roles, key);
+    const access = WEB_PART_ACCESS[key];
+
+    // One render call, not one per branch: the lint rule pairs render against
+    // unmount, and two renders against a single unmount is the shape a leak
+    // hides in even when this particular pair is fine.
+    ReactDom.render(
+      allowed
+        ? element
+        : React.createElement(AccessNotice, {
+            title: access.title,
+            groups: access.groups,
+          }),
+      this.domElement,
+    );
+  }
 
   protected getPropertyPaneConfiguration(): IPropertyPaneConfiguration {
     return {
